@@ -1,0 +1,15 @@
+# Foundry
+out/
+cache/
+broadcast/
+lib/
+
+# Node
+node_modules/
+dist/
+.env
+.env.local
+
+# Editor / OS
+.DS_Store
+.fuse_hidden*
