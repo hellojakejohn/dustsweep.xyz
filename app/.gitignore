@@ -1,1 +1,5 @@
 .vercel
+
+# Local RPC override for anvil-fork testing. Never committed.
+.env.local
+.env*.local

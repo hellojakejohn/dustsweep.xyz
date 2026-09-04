@@ -1,7 +1,9 @@
 # dustsweep.xyz
 
-Sell every worthless token in your wallet in one transaction, on
-Robinhood Chain (EVM chain 4663).
+Sell every worthless token in your wallet in one signature, on
+Robinhood Chain (EVM chain 4663). One signature covers the whole batch;
+each token also needs a one-off Permit2 approval the first time you
+sweep it.
 
 **Non-custodial. Exact-amount approvals, per transaction. Source is
 public. Unaudited.**

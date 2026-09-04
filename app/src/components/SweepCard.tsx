@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useAccount, useChainId, useSwitchChain } from 'wagmi';
+import { useAccount, useSwitchChain } from 'wagmi';
 import { useDustScan } from '../hooks/useDustScan';
-import { robinhoodChain } from '../lib/chain';
+import { chainName, robinhoodChain } from '../lib/chain';
 import { formatEth, formatEthTrim } from '../lib/format';
 import {
   NOT_DUST_CEILING_WEI,
@@ -56,8 +56,14 @@ const SECTIONS: {
 ];
 
 export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  // `useAccount().chainId` is the chain the WALLET is on. `useChainId()`
+  // is not: wagmi clamps that to a configured chain and, in its own
+  // words, "if chain is not configured, then don't switch over to it".
+  // With 4663 as the only configured chain it therefore reads 4663 no
+  // matter where the wallet actually is, which made the whole wrong-chain
+  // branch below unreachable -- a visitor on Ethereum went straight to
+  // scanning. Verified headless: a wallet reporting 0x1 got the scan.
+  const { address, chainId, isConnected } = useAccount();
   const onRightChain = chainId === robinhoodChain.id;
   const scan = useDustScan(isConnected && onRightChain ? address : undefined);
 
@@ -98,7 +104,7 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
 
   useEffect(() => {
     if (!isConnected) return onStatus('');
-    if (!onRightChain) return onStatus(`Wallet is on chain ${chainId}.`);
+    if (!onRightChain) return onStatus(`Wallet is on ${chainName(chainId)}.`);
     if (scan.phase === 'listing') return onStatus('Reading your token balances.');
     if (scan.phase === 'quoting') {
       return onStatus(
@@ -356,7 +362,7 @@ function Line({
 const STATS = [
   { value: '~63,000', label: 'tokens stranded on this chain' },
   { value: '2', label: 'launchpads that shut their front ends' },
-  { value: '1', label: 'transaction to clear yours' },
+  { value: '1', label: 'signature to clear yours' },
 ];
 
 const LEGEND: { pile: Pile; title: string; body: string }[] = [
@@ -406,6 +412,12 @@ function Disconnected() {
         Robinhood issued, are held back in a fourth pile as not dust.
       </p>
 
+      <p className="mt-2 text-[11px] leading-relaxed text-faint">
+        One signature covers the whole batch. Each token also needs a one-off approval the
+        first time you sweep it, so a fresh wallet pays those first, then signs once, then
+        sends one transaction.
+      </p>
+
       <img
         src="/janitor-full.png"
         alt=""
@@ -420,14 +432,33 @@ function Disconnected() {
   );
 }
 
-function WrongChain({ chainId }: { chainId: number }) {
-  const { switchChain, isPending } = useSwitchChain();
+/**
+ * The state a first-time visitor actually lands in. Phantom supports this
+ * chain but nobody arrives already on it, so this screen has to do the
+ * switch itself -- if the wallet has never seen 4663, wagmi turns the
+ * request into an add-chain prompt using `robinhoodChain`'s own RPC and
+ * explorer. Naming a network and leaving the user to find the setting is
+ * how you lose them here.
+ */
+function WrongChain({ chainId }: { chainId: number | undefined }) {
+  const { switchChain, isPending, error } = useSwitchChain();
   return (
     <div className="flex min-h-[288px] flex-col">
       <p className="text-[13px] leading-relaxed text-muted">
-        Your wallet is on chain {chainId}. dustsweep only reads {robinhoodChain.name}.
+        Your wallet is on {chainName(chainId)}. dustsweep only reads{' '}
+        {robinhoodChain.name}.
+      </p>
+      <p className="mt-2 text-[12px] leading-relaxed text-faint">
+        Switching adds {robinhoodChain.name} to your wallet if it is not there yet. It is a
+        network change, not an approval, and nothing is signed.
       </p>
       <div className="grow" />
+      {error && (
+        <p className="mt-4 rounded-md border border-tan/40 bg-tan/10 px-3 py-2 text-[11px] leading-relaxed text-tan">
+          The wallet did not switch. Approve the prompt, or add {robinhoodChain.name} by
+          hand and come back.
+        </p>
+      )}
       <button
         type="button"
         onClick={() => switchChain({ chainId: robinhoodChain.id })}

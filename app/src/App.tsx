@@ -1,11 +1,20 @@
 import { useState } from 'react';
+import { CapabilityProbe } from './components/CapabilityProbe';
 import { ConnectButton } from './components/Connect';
 import { SweepCard } from './components/SweepCard';
 import { robinhoodChain } from './lib/chain';
+import { RPC_IS_OVERRIDDEN } from './lib/rpc';
 
 /** Verified public on 4 Sep 2026. Keep this a real link or plain text --
  *  never a dead one, on a line whose whole job is being trustworthy. */
 const REPO_URL = 'https://github.com/hellojakejohn/dustsweep.xyz';
+
+/** TEMPORARY. dustsweep.xyz/?caps only. Unlinked, so normal visitors
+ *  never see it. Delete this and CapabilityProbe.tsx once the batching
+ *  question is answered. */
+const SHOW_CAPS =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).has('caps');
 
 export function App() {
   const [status, setStatus] = useState('');
@@ -26,9 +35,18 @@ export function App() {
           </span>
         </span>
         <div className="flex items-center gap-2">
-          <span className="num hidden h-8 items-center rounded-lg border border-teal px-2.5 text-[11px] text-muted sm:inline-flex">
-            chain {robinhoodChain.id}
+          {/* The chain by name. The id is plumbing and belongs in the
+              address book, not in the header. */}
+          <span className="hidden h-8 items-center rounded-lg border border-teal px-2.5 text-[11px] text-muted sm:inline-flex">
+            {robinhoodChain.name}
           </span>
+          {/* Never hidden at any breakpoint, and never quiet. Demoing a
+              fork that looks exactly like mainnet has burned people. */}
+          {RPC_IS_OVERRIDDEN && (
+            <span className="inline-flex h-8 items-center rounded-lg border border-tan px-2.5 text-[11px] font-semibold text-tan">
+              local fork
+            </span>
+          )}
           <ConnectButton />
         </div>
       </header>
@@ -62,6 +80,8 @@ export function App() {
           Two launchpads shipped ~63,000 tokens onto this chain, then turned off their front
           ends.
         </p>
+
+        {SHOW_CAPS && <CapabilityProbe />}
       </main>
     </div>
   );

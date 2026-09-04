@@ -1,5 +1,6 @@
 import { defineChain } from 'viem';
-import { CHAIN_ID, EXPLORER, RPC_PUBLIC, UNISWAP_V3 } from './addresses';
+import { CHAIN_ID, EXPLORER, UNISWAP_V3 } from './addresses';
+import { RPC_URL } from './rpc';
 
 /**
  * Robinhood Chain. Not in viem's chain list, so we define it here.
@@ -14,7 +15,9 @@ export const robinhoodChain = defineChain({
   id: CHAIN_ID,
   name: 'Robinhood Chain',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: { default: { http: [RPC_PUBLIC] } },
+  // Also what `switchChain` hands the wallet when the chain is not in it
+  // yet, which is why it follows the local-fork override too.
+  rpcUrls: { default: { http: [RPC_URL] } },
   blockExplorers: {
     default: { name: 'Blockscout', url: EXPLORER },
   },
@@ -22,6 +25,38 @@ export const robinhoodChain = defineChain({
     multicall3: { address: MULTICALL3 },
   },
 });
+
+/**
+ * Enough chain names to greet a first-time visitor by the network they
+ * actually arrived on. Phantom users land here on Ethereum or Solana;
+ * "you are on chain 1" is plumbing leaking into the copy.
+ *
+ * Deliberately a hand-written map. viem ships every chain it knows, but
+ * importing that registry to render one label would cost more bundle
+ * than the whole picker.
+ */
+const KNOWN_CHAINS: Record<number, string> = {
+  1: 'Ethereum',
+  10: 'OP Mainnet',
+  56: 'BNB Smart Chain',
+  100: 'Gnosis',
+  130: 'Unichain',
+  137: 'Polygon',
+  8453: 'Base',
+  42161: 'Arbitrum One',
+  43114: 'Avalanche',
+  59144: 'Linea',
+  81457: 'Blast',
+  534352: 'Scroll',
+  11155111: 'Sepolia',
+};
+
+/** Falls back to the number only when we genuinely have no name for it. */
+export function chainName(id: number | undefined): string {
+  if (id === undefined) return 'another network';
+  if (id === robinhoodChain.id) return robinhoodChain.name;
+  return KNOWN_CHAINS[id] ?? `network ${id}`;
+}
 
 export const QUOTER_V2 = UNISWAP_V3.quoterV2;
 

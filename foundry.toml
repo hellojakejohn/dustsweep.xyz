@@ -8,11 +8,19 @@ optimizer_runs = 200
 via_ir = false
 
 [rpc_endpoints]
-rhc = "https://rpc.mainnet.chain.robinhood.com"
-
-# Fork tests run against chain 4663. The public RPC is rate-limited --
-# if fork tests get flaky, swap in an Alchemy URL via env:
-#   rhc = "${RHC_RPC_URL}"
+# `rhc` is Alchemy. Set RHC_RPC_URL in .env at the repo root (gitignored).
+#
+# The public RPC is NOT usable for forking: Cloudflare fingerprints
+# Foundry's HTTP stack and returns a bot-challenge page instead of JSON,
+# so `forge test --fork-url rhc` and `anvil --fork-url rhc` both fail
+# against it. The same URL from a browser or curl is clean, which is why
+# `rhc_public` is kept -- it is fine for cast reads and for Blockscout
+# verification, which does not fork.
+#
+# If forge ever says it cannot resolve RHC_RPC_URL, the env var is not
+# reaching it. Fix the env, do not point `rhc` back at the public URL.
+rhc = "${RHC_RPC_URL}"
+rhc_public = "https://rpc.mainnet.chain.robinhood.com"
 
 [etherscan]
 # Blockscout verification for chain 4663.

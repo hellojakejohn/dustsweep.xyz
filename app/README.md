@@ -9,6 +9,21 @@ npm run build      # static dist/
 npm run typecheck
 ```
 
+Point the whole app at an anvil fork with one env var:
+
+```
+VITE_RPC_URL=http://127.0.0.1:8545 npm run dev
+```
+
+It feeds both the viem transport and `robinhoodChain.rpcUrls`, so the RPC
+a wallet is asked to *add* the chain with follows the fork too and the
+wallet is never reading a different node than the app. Unset -- including
+every production build -- nothing changes. When it is set the header
+carries a `local fork` badge at every breakpoint, on purpose: demoing a
+forked chain that looks exactly like mainnet has burned people.
+
+`.env.local` is gitignored here and at the repo root. Do not commit one.
+
 ## What is here
 
 Read half only. It lists your ERC-20s, quotes each one against WETH at
@@ -22,7 +37,9 @@ a transaction -- there is no Sweeper address yet.
 | `src/lib/blockscout.ts` | `GET /addresses/{a}/token-balances`, no key |
 | `src/lib/quoter.ts` | QuoterV2 ABI. Note the struct field order and the `view` lie |
 | `src/lib/scan.ts` | balances -> quotes -> three piles. All the actual logic |
+| `src/lib/rpc.ts` | resolves `VITE_RPC_URL`, the local-fork override |
 | `src/hooks/useDustScan.ts` | the only React binding to `scan.ts` |
+| `src/components/Connect.tsx` | wallet picker over wagmi's EIP-6963 connectors |
 
 `src/lib/*` has no React in it. That is deliberate: if the app ever moves
 to Next for dynamic OG images, only `src/components` and the hook move.
@@ -67,7 +84,23 @@ needs a click.
 
 ## Verified 4 Sep 2026
 
-Run against two real wallets on mainnet:
+Connect, picker, wrong-chain and RPC-override behaviour were driven in
+headless Chrome over CDP against a `dist/` build, with fake EIP-6963
+wallets announced into the page: 42 behaviour assertions across 12 cases,
+7 more for the env var, and a contrast audit that walks the rendered DOM
+and composites each text colour against what is actually painted behind
+it -- 147 text elements across 7 states, zero below 4.5:1 (3:1 for large
+text), tightest margin 0.70 over its own threshold.
+
+None of it is trusted on a first green. The suite was mutation-tested:
+restoring `connectors[0]` (which reconnected the wrong wallet, exactly
+Jake's bug), dropping the Escape handler, reverting to `useChainId()`,
+keeping the generic shim in the list, and removing the Safari blur guard
+each turned the assertions that cover them red, then the source was
+restored. The contrast auditor was checked the same way, against an
+injected teal-on-card label.
+
+The scan itself was run against two real wallets on mainnet:
 
 Piles below are sweepable / under gas / no route / not dust, at the
 0.1 ETH ceiling.
@@ -87,6 +120,49 @@ bearing.
 That second run is the argument for quoting all three tiers. NVDA, AAPL,
 SPY, GME and SPCX only quote at 500; CBBTC, HIMS and TSLA only at 3000.
 Quoting 10000 alone would have called all eight of them "no route".
+
+## Connecting
+
+`connectors[0]` was picking whichever extension won the injection race.
+With Phantom and MetaMask both installed the button went to MetaMask with
+no way to choose.
+
+wagmi discovers every installed wallet over EIP-6963 and appends one
+connector per wallet keyed by rdns, so the fix needs no new dependency --
+no RainbowKit, no WalletConnect project id. The picker costs ~4 KB.
+
+- One wallet: connects straight to it. A list of one is not a choice.
+- More than one: a small menu, wallet name and its EIP-6963 icon, in the
+  header and in the card both. Escape or a click outside dismisses it,
+  the first option takes focus on open, arrows move between them.
+- None: the "No wallet detected" link. **That branch used to be dead** --
+  our own `injected()` shim is in the config whether or not anything
+  injected, so `connectors` is never empty. It is now gated on there
+  actually being a `window.ethereum`, rechecked once after mount for
+  wallets that inject late.
+- The last wallet used is remembered in `localStorage` and floats to the
+  top. Every read and write is wrapped: some browsers throw on access.
+
+The generic shim is hidden whenever discovery found real wallets, or it
+would sit in the list as an unnamed fourth entry duplicating one of the
+other three.
+
+### Two traps found while building it
+
+**`useChainId()` is not the wallet's chain.** wagmi clamps it to a
+configured chain -- "if chain is not configured, then don't switch over
+to it" -- so with 4663 as the only configured chain it read 4663 no
+matter where the wallet actually was. `SweepCard` used it to decide
+`onRightChain`, which made the entire wrong-chain branch unreachable: a
+visitor sitting on Ethereum went straight to scanning. Use
+`useAccount().chainId`, which is the connection's real chain.
+
+**Do not close the picker on a bare blur.** macOS Safari does not focus a
+button on mousedown and blurs whatever had focus to the body, so a blur
+with a null `relatedTarget` arrives *between* mousedown and click. Close
+on that and the menu unmounts before the click lands -- the picker cannot
+be used with a mouse in Safari at all. Only a blur that names where focus
+went counts.
 
 ## Palette
 

@@ -27,7 +27,9 @@ Anything not listed here is unverified. Say so rather than guessing.
 ## Verified addresses
 
 Chain ID 4663. Public RPC `https://rpc.mainnet.chain.robinhood.com`
-(rate-limited, fine for reads, use Alchemy for production).
+(rate-limited, fine for reads from a browser or curl, **blocked for
+Foundry by Cloudflare** -- see "The public RPC blocks Foundry" below.
+Use Alchemy).
 Explorer `https://robinhoodchain.blockscout.com`.
 
 ```
@@ -149,8 +151,8 @@ Graduation thresholds are denominated in the pair token and vary widely
   **Written. Not yet deployed.**
 - `V3Adapter.sol` -- token to WETH via SwapRouter02, enforces `minOut`,
   sends WETH straight back to the caller, ownerless and immutable.
-  Covers Noxa + Pons V1 + graduated V2. **Written, fork tests in
-  `test/V3Adapter.t.sol`. Not yet run or deployed.**
+  Covers Noxa + Pons V1 + graduated V2. **Written, 12/12 fork tests pass
+  against real mainnet state. Not deployed.**
 - Curve adapter -- later. Explicitly on the cut list.
 
 **`ISweepAdapter` approves, it does not transfer.** The code path in
@@ -190,6 +192,35 @@ wallet's 0.0004 CBBTC (0.011 ETH of wrapped Bitcoin) falls below the
 line and lands in sweepable. That is the ceiling working as specified,
 but it means the value backstop does not catch small positions in real
 assets. Only provenance will.
+
+**Wallet connectors: `injected` + `walletConnect`.** Injected alone made
+the site a dead end in mobile Safari and Brave, because MetaMask on a
+phone is a separate app that injects nothing into other browsers. The
+picker correctly found nothing and showed "No wallet detected" to people
+with a wallet open in the next app over.
+
+The WalletConnect project id is public by design and lives in `wagmi.ts`,
+NOT in `.env`. It ships in the bundle like every WalletConnect site's
+does, and is scoped by the domain allowlist in the WalletConnect
+dashboard. Do not "tidy" it into an env var, and never move `RHC_RPC_URL`
+the other way.
+
+**Bundle cost, measured 4 Sep. Read the right number.** Total emitted
+assets went 0.53 MB -> 3.10 MB, which looks alarming and is the wrong
+figure to judge by. `showQrModal: true` pulls in Reown AppKit: the modal,
+52 Phosphor icon chunks (159 KB), and a 1 MB brotli WASM blob. All of it
+is code-split and lazily fetched.
+
+What actually loads on first paint went **560 KB -> 592 KB, about 6%**.
+The AppKit payload (~2.3 MB raw) is fetched only when someone taps
+connect AND picks WalletConnect. Desktop users with an extension never
+fetch it at all.
+
+That connect-time cost is real on cellular and could be removed with
+`showQrModal: false` plus a hand-rolled QR and deep-link path. That means
+reimplementing AppKit on the single most important path in the app, so it
+is deliberately not done. Do not re-panic at the 3.10 MB figure without
+re-reading which chunks `dist/index.html` actually preloads.
 
 Not Next.js. This app has no server-side work: wallet connect, reads,
 signing and sending all happen in the browser, and the one reason to want
@@ -284,6 +315,49 @@ forge verify-contract <addr> src/V3Adapter.sol:V3Adapter \
 
 ---
 
+### The public RPC blocks Foundry (Cloudflare)
+
+`forge test --fork-url rhc` and `anvil --fork-url rhc` fail against
+`https://rpc.mainnet.chain.robinhood.com`. The endpoint returns a
+Cloudflare bot-challenge page instead of JSON. It is not an outage and it
+is not the test code: the same endpoint, hit from a browser in the same
+minute, returned `{"jsonrpc":"2.0","id":1,"result":"0x3413dbc"}` with no
+challenge. Cloudflare is fingerprinting the client and Foundry's HTTP
+stack fails the check.
+
+**Consequence: an Alchemy key for 4663 is on the critical path**, not a
+nice-to-have. It blocks the fork tests and the local anvil plan equally.
+
+**RESOLVED 4 Sep.** `[rpc_endpoints] rhc` now points at `${RHC_RPC_URL}`,
+set in `.env` at the repo root and gitignored. `rhc_public` keeps the
+public URL for cast reads and Blockscout verification, neither of which
+forks. `.env.example` documents the variable. The key is Foundry-only and
+must never appear under `app/`: Vite inlines `VITE_*` into the static
+bundle and this repo is public.
+
+**Fork tests are not pinned to a block.** Two runs minutes apart returned
+different CASHCAT figures on identical input (97.998e18, then 98.141e18)
+because the pool is live and the fork follows head. The Noxa numbers were
+byte-identical across both runs, so that pool is quiet. The risk is a red
+test that has nothing to do with the code: `test_FeeTiersCanDisagree`
+asserts the 1% and 0.3% tiers disagree, and an arbitrageur closing that
+gap breaks it. Undecided whether to pin.
+
+Until there is a key, run only the suites that do not fork:
+
+```
+forge test --match-path "test/BurnAdapter.t.sol" -vv
+```
+
+With a key:
+
+```
+forge test --fork-url $ALCHEMY_URL
+anvil --fork-url $ALCHEMY_URL
+```
+
+---
+
 ## Economics, measured 4 Sep 2026
 
 Gas ~1.23 gwei (live reads later the same day came back 0.92 to 0.97
@@ -329,13 +403,28 @@ current tool, repo or approach is the right one at all.
 
 ---
 
-## Contract status as of 4 Sep, 15:00
+## Contract status as of 4 Sep, end of day
 
-**20/20 tests pass**, and they were mutation-tested: the contract was broken
-three ways (catch branch not returning the token, leg/permit equality check
-removed, value ceiling removed) and each test went red, then the source was
-restored byte-identical. A green tick that has never been seen to fail is
-not evidence.
+**27/27 tests pass**, first observed green on a working fork RPC, 4 Sep.
+
+| Suite | Tests | Forks? | Mutation-verified? |
+|---|---|---|---|
+| `Sweeper.t.sol` | 8 | no, mocks | yes |
+| `BurnAdapter.t.sol` | 7 | no, mocks | no |
+| `V3Adapter.t.sol` | 12 | yes, live mainnet state | no |
+
+An earlier version of this file said **"20/20 tests pass"** and attributed
+it to the Sweeper. That was wrong twice. `Sweeper.t.sol` has 8 tests, and
+20 was 8 + 12: a count of test functions that existed, not of tests
+observed passing. When it was written those 12 V3Adapter tests had never
+executed once. Corrected after the first real fork run.
+
+The mutation testing covers the 8 Sweeper tests only. The contract was
+broken three ways (catch branch not returning the token, leg/permit
+equality check removed, value ceiling removed) and each test went red,
+then the source was restored byte-identical. A green tick that has never
+been seen to fail is not evidence. Neither is a count of tests nobody
+has run.
 
 Already done, do not re-report these:
 
@@ -344,6 +433,46 @@ Already done, do not re-report these:
 - All four admin setters emit events.
 - `ISweepAdapter` lives in `src/ISweepAdapter.sol` only. Zero local copies.
 - aeWETH `deposit`/`withdraw` was probed live and round-trips exactly.
+
+### Two contracts added late on day 1
+
+**`src/BurnAdapter.sol`** -- sends a token to
+`0x000000000000000000000000000000000000dEaD` and returns 0. For dust with
+no route out, which is most of it. **7/7 tests pass**, no fork needed.
+
+The property that makes the two adapters non-interchangeable:
+**`BurnAdapter` requires `minOut == 0` and `V3Adapter` requires
+`minOut != 0`.** A UI bug that routes a sellable token to the burner, or
+a burnable one to the router, reverts instead of destroying value. Do not
+relax either check.
+
+It burns to `dEaD`, not `address(0)`, because many ERC20s revert on a
+transfer to zero.
+
+**`src/BuybackBurner.sol`** -- buys SWEEP with the fee sink's ETH and
+sends it straight to `dEaD`. **Untested and untestable today: no SWEEP
+pool exists.** It is written, it compiles, it has never run.
+
+Its trust properties are deliberate and should be stated publicly: no
+owner, no withdraw function, SWEEP address immutable, the swap recipient
+is the graveyard so proceeds never touch a wallet even transiently,
+anyone can call `burn()`, 1-hour cooldown, requires `minOut != 0`.
+
+### What the owner can and cannot do (state this accurately)
+
+`BuybackBurner` genuinely cannot be rugged. **`Sweeper` is
+owner-controlled and must not be described as trustless.** The owner can
+whitelist adapters, change fees up to the 5% cap, redirect the fee sink,
+raise the value ceiling, and set the payout target.
+
+What bounds it: the Sweeper holds no custody, so there is no treasury to
+drain. The worst case from a compromised owner key is tokens stolen in
+flight during subsequent sweeps, not a balance sitting there waiting.
+
+Honest framing: the burner cannot be rugged, the sweeper is
+owner-controlled with capped fees and no custody, and here is the key
+that controls it. Hardware wallet for the owner key. If volume shows up,
+put a timelock on `setAdapter`.
 
 ### The payout path is unreachable at launch
 
