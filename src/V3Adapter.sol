@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ISweepAdapter} from "./ISweepAdapter.sol";
 
 /// @notice Uniswap SwapRouter02 on Robinhood Chain.
 /// @dev    ExactInputSingleParams has NO deadline field. That is the
@@ -26,12 +27,6 @@ interface IV3SwapRouter {
         external
         payable
         returns (uint256 amountOut);
-}
-
-interface ISweepAdapter {
-    function sell(address token, uint256 amountIn, uint256 minOut, bytes calldata data)
-        external
-        returns (uint256 wethOut);
 }
 
 /// @title V3Adapter

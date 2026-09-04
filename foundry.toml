@@ -15,5 +15,16 @@ rhc = "https://rpc.mainnet.chain.robinhood.com"
 #   rhc = "${RHC_RPC_URL}"
 
 [etherscan]
-# Blockscout verification for chain 4663
-rhc = { key = "any", url = "https://robinhoodchain.blockscout.com/api", chain = 4663 }
+# Blockscout verification for chain 4663.
+#
+# Do NOT add `chain = 4663` here. Foundry validates that field against its
+# own chain list and 4663 is not in it, so its presence makes EVERY forge
+# command fail with "Error: Chain 4663 not supported" -- including
+# `forge test`, which has nothing to do with verification.
+#
+# To verify after deploying:
+#   forge verify-contract <addr> src/V3Adapter.sol:V3Adapter \
+#     --verifier blockscout \
+#     --verifier-url https://robinhoodchain.blockscout.com/api \
+#     --rpc-url rhc
+rhc = { key = "any", url = "https://robinhoodchain.blockscout.com/api" }

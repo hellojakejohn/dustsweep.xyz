@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {ISweepAdapter} from "./ISweepAdapter.sol";
 
 interface IWETH9 is IERC20 {
     function withdraw(uint256) external;
@@ -25,22 +26,6 @@ interface IPermit2 {
         address owner,
         bytes calldata signature
     ) external;
-}
-
-/// @notice One route out of one venue. V1 tokens sell on Uniswap V3, V2
-/// pre-graduation tokens sell back into their own bonding curve, V2
-/// graduates sell on Uniswap V4. Each gets its own adapter so the core
-/// never learns a venue.
-interface ISweepAdapter {
-    /// @dev The core sets an exact-amount approval for `amountIn` of
-    ///      `token` before this call, so the adapter must PULL with
-    ///      transferFrom. (The payout leg is the exception: it is
-    ///      pre-funded by transfer. See setPayout.) The adapter must send
-    ///      WETH back to `msg.sender`. Reverts are expected and caught by
-    ///      the core.
-    function sell(address token, uint256 amountIn, uint256 minOut, bytes calldata data)
-        external
-        returns (uint256 wethOut);
 }
 
 /// @title Sweeper
@@ -74,7 +59,7 @@ contract Sweeper is Ownable2Step, ReentrancyGuard {
 
     uint256 public feeBpsNative = 300; // 3% when paid out in ETH
     uint256 public feeBpsPayout = 100; // 1% when paid out in the payout token
-    uint256 public maxLegValueWei = 5 ether;
+    uint256 public maxLegValueWei = 0.5 ether; // launch value. raise once it has run.
 
     address public feeSink;
     address public payoutToken;
@@ -100,6 +85,13 @@ contract Sweeper is Ownable2Step, ReentrancyGuard {
     );
     event LegFailed(address indexed user, address indexed token, bytes reason);
     event AdapterSet(address indexed adapter, bool allowed);
+    // An owner who can move the fees or the value ceiling silently is not
+    // observable by anyone. If the pitch is "public source", the knobs have
+    // to be watchable too.
+    event FeesSet(uint256 nativeBps, uint256 payoutBps);
+    event PayoutSet(address indexed token, address indexed adapter);
+    event FeeSinkSet(address indexed sink);
+    event MaxLegValueSet(uint256 maxWei);
 
     error NoLegs();
     error LengthMismatch();
@@ -109,8 +101,14 @@ contract Sweeper is Ownable2Step, ReentrancyGuard {
     error FeeTooHigh();
     error PayoutUnavailable();
     error EthTransferFailed();
+    error ZeroAddress();
 
     constructor(address permit2, address weth, address feeSink_) Ownable(msg.sender) {
+        // A zero feeSink makes every sweep with a non-zero fee revert on the
+        // transfer, bricking the contract on a one-line deploy typo.
+        if (permit2 == address(0) || weth == address(0) || feeSink_ == address(0)) {
+            revert ZeroAddress();
+        }
         PERMIT2 = IPermit2(permit2);
         WETH = IWETH9(weth);
         feeSink = feeSink_;
@@ -229,19 +227,24 @@ contract Sweeper is Ownable2Step, ReentrancyGuard {
         if (native_ > MAX_FEE_BPS || payout_ > MAX_FEE_BPS) revert FeeTooHigh();
         feeBpsNative = native_;
         feeBpsPayout = payout_;
+        emit FeesSet(native_, payout_);
     }
 
     function setPayout(address token, address adapter) external onlyOwner {
         payoutToken = token;
         payoutAdapter = adapter;
+        emit PayoutSet(token, adapter);
     }
 
     function setFeeSink(address sink) external onlyOwner {
+        if (sink == address(0)) revert ZeroAddress();
         feeSink = sink;
+        emit FeeSinkSet(sink);
     }
 
     function setMaxLegValue(uint256 wei_) external onlyOwner {
         maxLegValueWei = wei_;
+        emit MaxLegValueSet(wei_);
     }
 
     receive() external payable {}

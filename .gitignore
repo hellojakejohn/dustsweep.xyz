@@ -2,7 +2,8 @@
 out/
 cache/
 broadcast/
-lib/
+# Foundry deps only. Anchored: an unanchored "lib/" also ate app/src/lib.
+/lib/
 
 # Node
 node_modules/
@@ -13,3 +14,14 @@ dist/
 # Editor / OS
 .DS_Store
 .fuse_hidden*
+
+# Analyser output (regenerate with `aderyn .`)
+report.md
+
+# Claude scratch, not part of the source
+docs/reference/
+docs/_to_delete/
+
+# Working docs and launch notes. Held back until after launch -- publishing
+# is one-way, adding them later is not. Delete these two lines to include.
+docs/

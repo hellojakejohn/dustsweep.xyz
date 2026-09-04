@@ -153,15 +153,43 @@ Graduation thresholds are denominated in the pair token and vary widely
   `test/V3Adapter.t.sol`. Not yet run or deployed.**
 - Curve adapter -- later. Explicitly on the cut list.
 
-**`ISweepAdapter` approves, it does not transfer.** The interface doc
-comment says the adapter is "funded with `amountIn`", but the actual code
-path in `Sweeper.sweep` is `forceApprove(adapter, received)` then
-`adapter.sell(...)`. So an adapter must pull with `transferFrom`.
+**`ISweepAdapter` approves, it does not transfer.** The code path in
+`Sweeper.sweep` is `forceApprove(adapter, received)` then
+`adapter.sell(...)`, so an adapter must pull with `transferFrom`. The
+doc comment in `Sweeper.sol` now says this correctly; the note that it
+said "funded with" is out of date as of 4 Sep 2026.
 Note the payout leg is inconsistent with this: it does
 `WETH.safeTransfer(payoutAdapter, net)` first, so a payout adapter is
 genuinely pre-funded. Do not write one adapter that assumes both.
 
+`ISweepAdapter` is declared twice, in `Sweeper.sol` and `V3Adapter.sol`.
+The two signatures currently match. They are not linked by the compiler,
+so nothing stops them drifting. Aderyn flags this as its only High.
+
 ### Front end -- decided: Vite + React + wagmi/viem + Tailwind
+
+**Read half is built and running in `app/`. See `app/README.md`.**
+One centred card, four collapsible sections, nothing pre-checked.
+Verified against two real mainnet wallets on 4 Sep 2026: a 184-token
+wallet sorted 29 sweepable / 17 under gas / 123 no route / 13 not dust,
+552 quote calls in ~18s on the public RPC without rate limiting.
+
+**Trap 7: not everything in a wallet is dust.** Quoting alone put
+CBBTC, SPY, NVDA, AAPL, GME, TSLA, HIMS and SPCX in the sweepable pile.
+`maxLegValueWei` does not save us -- at 5 ETH it catches the wrapped
+Bitcoin and misses every stock. The front end now holds back any holding
+quoting above `NOT_DUST_CEILING_WEI` (0.1 ETH) plus anything whose
+on-chain `name()` ends in `• Robinhood Token` (U+2022, verified
+on-chain). Match on name: this chain has two different tokens with
+symbol `PLTR`, one real and one a meme, and an `IBM` called "I BUY
+MEMES". The real fix is provenance -- index `TokenDeployed` from both
+factories and treat only those addresses as dust -- and is not done.
+
+**The ceiling is per holding, not per token.** At 0.1 ETH the test
+wallet's 0.0004 CBBTC (0.011 ETH of wrapped Bitcoin) falls below the
+line and lands in sweepable. That is the ceiling working as specified,
+but it means the value backstop does not catch small positions in real
+assets. Only provenance will.
 
 Not Next.js. This app has no server-side work: wallet connect, reads,
 signing and sending all happen in the browser, and the one reason to want
@@ -239,9 +267,27 @@ That is the one-signature-many-tokens call the sweeper depends on.
 
 ---
 
+## Foundry config trap
+
+**Never put `chain = 4663` in the `[etherscan]` block of `foundry.toml`.**
+Foundry validates that field against its own chain list, 4663 is not in
+it, and its presence makes EVERY forge command fail with
+`Error: Chain 4663 not supported` -- including `forge test`, which has
+nothing to do with verification. This cost a full session's fork run
+before it was spotted. Verify with explicit flags instead:
+
+```
+forge verify-contract <addr> src/V3Adapter.sol:V3Adapter \
+  --verifier blockscout \
+  --verifier-url https://robinhoodchain.blockscout.com/api --rpc-url rhc
+```
+
+---
+
 ## Economics, measured 4 Sep 2026
 
-Gas ~1.23 gwei. One swap leg (~180k gas) costs ~0.000222 ETH. A ten-token
+Gas ~1.23 gwei (live reads later the same day came back 0.92 to 0.97
+gwei, so read it, never hardcode it). One swap leg (~180k gas) costs ~0.000222 ETH. A ten-token
 batch (~1.2M gas) costs ~0.00148 ETH.
 
 A never-traded Noxa or Pons V1 pool holds 0.02 to 0.6 WETH total across
@@ -280,3 +326,48 @@ between options, stop and investigate properly instead of iterating.
 If Jake pushes back on a conclusion, treat it as a signal you may be
 anchored on a wrong assumption, especially the assumption that the
 current tool, repo or approach is the right one at all.
+
+---
+
+## Contract status as of 4 Sep, 15:00
+
+**20/20 tests pass**, and they were mutation-tested: the contract was broken
+three ways (catch branch not returning the token, leg/permit equality check
+removed, value ceiling removed) and each test went red, then the source was
+restored byte-identical. A green tick that has never been seen to fail is
+not evidence.
+
+Already done, do not re-report these:
+
+- `maxLegValueWei` is **0.5 ether**, not 5.
+- `feeSink` has a zero-address guard in the constructor and the setter.
+- All four admin setters emit events.
+- `ISweepAdapter` lives in `src/ISweepAdapter.sol` only. Zero local copies.
+- aeWETH `deposit`/`withdraw` was probed live and round-trips exactly.
+
+### The payout path is unreachable at launch
+
+`payoutToken` and `payoutAdapter` default to `address(0)` and `setPayout`
+has not been called, so `wantPayout = true` reverts `PayoutUnavailable`.
+That is why it has no test coverage yet and why that is acceptable for now.
+
+**The front end must not offer a "pay me in SWEEP" toggle until SWEEP
+exists and `setPayout` has been called.** A toggle that always reverts is
+worse than no toggle.
+
+When SWEEP does land, that path needs tests before it goes live. It uses
+the pre-funded `safeTransfer`-then-`sell` convention rather than the
+approve-then-pull one every other leg uses, which is the single most
+likely place for a wrong-convention adapter bug.
+
+### Known gaps, ranked
+
+1. `wantPayout = true` untested. Blocks the SWEEP payout, not the sweep.
+2. No fee-on-transfer token in the Sweeper batch suite. Both contracts
+   have comments claiming they handle it; nothing proves it at batch level.
+3. Duplicate token in one permit is unasserted. Traced, no loss vector
+   (the second leg finds a zero balance and skips).
+4. The unwrap leg runs against MockWETH, not live aeWETH.
+
+None of these block a read-only launch, because the contract is not part
+of a read-only launch.

@@ -1,0 +1,51 @@
+@import 'tailwindcss';
+
+/**
+ * Palette sampled from the janitor artwork so the site and the X profile
+ * read as one brand. Contrast measured against the page background.
+ *
+ *   cream   15.7:1  primary text
+ *   tan     10.0:1  numbers, secondary accent
+ *   orange   7.9:1  primary accent, the CTA
+ *   muted    7.2:1  secondary copy
+ *   faint    5.6:1  quietest copy -- still clears 4.5:1
+ *   teal     2.1:1  FAILS TEXT CONTRAST. Shapes, borders, fills, dots
+ *                   and nothing else. Never put a label in it.
+ *
+ * Inside a teal-filled block `faint` drops to 4.4:1, so use `muted` or
+ * brighter on teal.
+ */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+  --color-page: #0a0a0b;
+  --color-card: #131315;
+  --color-raise: #1a1a1d;
+
+  --color-cream: #f0e4cc;
+  --color-muted: #a39b8b;
+  --color-faint: #8e8778;
+  --color-orange: #e49054;
+  --color-tan: #d8b377;
+  --color-teal: #304854;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background-color: var(--color-page);
+  }
+  body {
+    @apply bg-page text-cream antialiased;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--color-orange) 30%, transparent);
+  }
+}
+
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+}
