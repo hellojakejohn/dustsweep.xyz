@@ -279,6 +279,43 @@ and `PROBES_PER_BATCH`/`PROBE_CONCURRENCY` in `willmove.ts`. Full
 measurement and the re-measure procedure in `docs/LOCAL-TESTING.md`,
 "The public RPC's batch limit".
 
+**The production bundle ships the PUBLIC RHC endpoint. No Alchemy key
+reaches the browser. Verified 5 Sep 2026 by grepping a clean build, not
+by reading the code.**
+
+A clean `npm run build` with `app/.env.local` moved aside contains
+`rpc.mainnet.chain.robinhood.com` and the string "alchemy" nowhere in
+`dist/` at all. Three independent things keep it that way:
+
+1. `RPC_URL = VITE_RPC_URL || RPC_PUBLIC` in `lib/rpc.ts`, and no
+   `app/.env` or `app/.env.production` exists, so unset means public.
+2. The Alchemy key lives in `RHC_RPC_URL` in the repo-root `.env`. Vite's
+   `envDir` defaults to its root, which is `app/`, so it never reads that
+   file.
+3. Even if it did, `envPrefix` defaults to `VITE_` and `RHC_RPC_URL` does
+   not carry it. Nothing in the root `.env` is `VITE_`-prefixed. Both
+   defaults are in force: `app/vite.config.ts` sets neither.
+
+**The trap: `vite build` DOES load `app/.env.local`.** Vite reads
+`.env.local` in every mode except test, so a production build run on a
+machine set up for fork testing inlines the fork values. Confirmed, not
+theorised: the `dist/` sitting in this repo on 5 Sep contained
+`127.0.0.1:8545` and the fork Sweeper address, because it was built with
+`.env.local` in place. Harmless there (Vercel builds from a clean
+checkout that has no `.env.local`, since it is gitignored) and fatal if
+anyone ever hand-deploys a local `dist/`. **Deploy from CI, or move
+`app/.env.local` aside before building anything you intend to ship.**
+
+**Not checked, because it cannot be seen from this checkout: the Vercel
+project's own environment variables.** There is no `.vercel/` directory,
+no `vercel.json` and no Vercel CLI here. A `VITE_RPC_URL` set in the
+Vercel dashboard WOULD override all of the above and win silently. If
+one is set there, that is the real answer and this note is wrong.
+Confirm in the dashboard before launch. Nothing needs to be set in
+Alchemy for the front end: no domain allowlist, no referrer rules,
+because the browser never talks to Alchemy. The key stays Foundry-only,
+and item 3b (rotate it before launch) still stands.
+
 **Bundle cost, measured 4 Sep. Read the right number.** Total emitted
 assets went 0.53 MB -> 3.10 MB, which looks alarming and is the wrong
 figure to judge by. `showQrModal: true` pulls in Reown AppKit: the modal,
