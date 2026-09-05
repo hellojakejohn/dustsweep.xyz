@@ -164,9 +164,18 @@ Note the payout leg is inconsistent with this: it does
 `WETH.safeTransfer(payoutAdapter, net)` first, so a payout adapter is
 genuinely pre-funded. Do not write one adapter that assumes both.
 
-`ISweepAdapter` is declared twice, in `Sweeper.sol` and `V3Adapter.sol`.
-The two signatures currently match. They are not linked by the compiler,
-so nothing stops them drifting. Aderyn flags this as its only High.
+`ISweepAdapter` **is declared once**, in `src/ISweepAdapter.sol`, and
+`Sweeper.sol`, `V3Adapter.sol` and `BurnAdapter.sol` all import it.
+Verified 4 Sep evening by grep. An earlier version of this file said it
+was declared twice and that aderyn flagged it as its only High; that was
+true before the consolidation and false after, and it survived here and
+in the day-2 handoff as a stale to-do. **Re-run aderyn to find out what,
+if anything, it flags now.** Do not go looking for a duplicate that is
+not there.
+
+(`test/Sweeper.t.sol` imports the symbol via `../src/Sweeper.sol` rather
+than from the interface file. That works because Solidity re-exports
+imported symbols. Harmless, slightly misleading, not a duplicate.)
 
 ### Front end -- decided: Vite + React + wagmi/viem + Tailwind
 
