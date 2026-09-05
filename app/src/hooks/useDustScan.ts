@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePublicClient } from 'wagmi';
+import { SWEEPER } from '../lib/addresses';
 import { fetchHeldTokens } from '../lib/blockscout';
 import { FIXTURE_IS_ON, fetchFixtureTokens } from '../lib/fixture';
 import { emptyScan, scanWallet, type ScanState } from '../lib/scan';
@@ -39,6 +40,10 @@ export function useDustScan(address: `0x${string}` | undefined) {
         held,
         onUpdate: patch,
         signal: controller.signal,
+        // `SWEEPER`, not `requireSweeper()`. This is the read half and it
+        // has to work with no contract deployed; a null here just skips
+        // the will-it-move probe.
+        sweeper: SWEEPER,
       });
     } catch (err) {
       if (controller.signal.aborted) return;

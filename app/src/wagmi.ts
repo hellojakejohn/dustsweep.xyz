@@ -46,8 +46,25 @@ export const wagmiConfig = createConfig({
   ],
   transports: {
     [robinhoodChain.id]: http(RPC_URL, {
-      // The public RPC is rate-limited. Coalesce whatever we can.
-      batch: { wait: 16 },
+      /**
+       * The public RPC is rate-limited. Coalesce whatever we can, but
+       * cap the batch: it rejects an oversized one wholesale with a
+       * single `{"code": 429, "Too Many Requests"}` object instead of an
+       * array, so ONE batch that is too big fails every call inside it.
+       *
+       * Measured against `rpc.mainnet.chain.robinhood.com` on 5 Sep 2026,
+       * each figure cold after a cooldown:
+       *
+       *   eth_blockNumber  300 -> 200 OK      301 -> 429
+       *   eth_call          50 -> 200 OK      100 -> 429
+       *
+       * So the limit is weighted by method, not a flat request count, and
+       * eth_call is the expensive one. 50 is the ceiling that matters
+       * because the will-it-move probe in lib/willmove.ts cannot use
+       * Multicall3 and therefore emits real eth_calls one per token.
+       * Half that, for headroom against a heavier method turning up.
+       */
+      batch: { wait: 16, batchSize: 25 },
       retryCount: 2,
       retryDelay: 250,
     }),

@@ -4,7 +4,8 @@ import { useAccount, useCapabilities, usePublicClient, useWalletClient } from 'w
 import { CHAIN_ID, requireSweeper, requireV3Adapter } from '../lib/addresses';
 import { atomicStatus, canBatchAtomically, type AtomicStatus } from '../lib/batching';
 import { robinhoodChain } from '../lib/chain';
-import { isUserRejection, readableError } from '../lib/errors';
+import { DELEGATED_REVERT_HINT, isDelegatedCode } from '../lib/delegation';
+import { isRevertWithoutData, isUserRejection, readableError } from '../lib/errors';
 import {
   approvalPlan,
   approveTx,
@@ -118,9 +119,40 @@ export function useSweep(opts: {
 
   const [state, setState] = useState<SweepState>(INITIAL);
   const [preflightNonce, setPreflightNonce] = useState(0);
+  /**
+   * Does the connected account have code, i.e. an EIP-7702 delegation.
+   * Held OUTSIDE `state` so a reset does not wipe it: it is a fact about
+   * the wallet, not a step in the flow.
+   */
+  const [delegated, setDelegated] = useState(false);
   const stopRef = useRef(false);
   const stageRef = useRef<SweepStage>('idle');
   stageRef.current = state.stage;
+
+  /**
+   * Once on connect. With code on the account Permit2 takes the ERC-1271
+   * branch instead of ecrecover, and for a delegate that does not answer
+   * it, the sweep reverts with no data at all. Whether MetaMask's own
+   * smart-account delegator answers correctly is UNVERIFIED, so this
+   * warns and never blocks. See lib/delegation.ts.
+   */
+  useEffect(() => {
+    setDelegated(false);
+    if (!publicClient || !address) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const code = await publicClient.getCode({ address });
+        if (!cancelled) setDelegated(isDelegatedCode(code));
+      } catch {
+        // A code read that fails is not evidence of anything, and a
+        // warning nobody can act on is worse than no warning.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [publicClient, address]);
 
   const atomic: AtomicStatus = useMemo(
     () => atomicStatus(capabilities, CHAIN_ID),
@@ -343,13 +375,29 @@ export function useSweep(opts: {
       // Simulate before sending. A batch that cannot succeed should cost
       // the user nothing, and this is the last point where that is still
       // true: they have signed, but signing is free.
-      await publicClient.simulateContract({
-        address: sweeper,
-        abi: sweeperAbi,
-        functionName: 'sweep',
-        args,
-        account: address,
-      });
+      //
+      // The will-it-move probe during the scan is a filter in front of
+      // this, not a replacement for it. This still catches everything the
+      // probe could not: a pool that moved, an allowance spent elsewhere,
+      // a token that only misbehaves once it is actually being pulled.
+      try {
+        await publicClient.simulateContract({
+          address: sweeper,
+          abi: sweeperAbi,
+          functionName: 'sweep',
+          args,
+          account: address,
+        });
+      } catch (err) {
+        // A revert with NO data, on a wallet that has code, is Permit2's
+        // ERC-1271 branch and almost nothing else. Naming it beats the
+        // generic copy, which would send the user hunting a pool problem
+        // that is not there.
+        if (delegated && isRevertWithoutData(err)) {
+          throw new Error(DELEGATED_REVERT_HINT);
+        }
+        throw err;
+      }
 
       await assertRightChain();
 
@@ -381,7 +429,7 @@ export function useSweep(opts: {
 
       patch({ stage: 'done', receipt: parsed, currentHash: hash });
     },
-    [walletClient, publicClient, address, assertRightChain, patch],
+    [walletClient, publicClient, address, assertRightChain, patch, delegated],
   );
 
   /* --- 3. re-quote, then hand off ------------------------------------- */
@@ -533,6 +581,8 @@ export function useSweep(opts: {
   return {
     ...state,
     atomic,
+    /** True when the account carries an EIP-7702 delegation. */
+    delegated,
     /** Remaining confirmations for the current selection. */
     approvalsRemaining: Math.max(0, state.steps.length - state.stepsDone),
     start,

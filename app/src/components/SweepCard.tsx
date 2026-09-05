@@ -50,7 +50,10 @@ const SECTIONS: {
     pile: 'noRoute',
     title: 'No route out',
     openByDefault: false,
-    note: 'No pool at 1%, 0.3% or 0.05%, or the quote rounds to zero.',
+    note:
+      'No pool at 1%, 0.3% or 0.05%, the quote rounds to zero, or the token will ' +
+      'not let itself be transferred. Some tokens only allow transfers to their ' +
+      'own pool, and those cannot be swept by anyone.',
   },
   {
     pile: 'notDust',

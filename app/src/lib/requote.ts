@@ -39,7 +39,8 @@ export type DropReason =
   | 'zeroBalance'
   | 'noQuote'
   | 'underGas'
-  | 'aboveLegCeiling';
+  | 'aboveLegCeiling'
+  | 'willNotMove';
 
 export const DROP_REASON_COPY: Record<DropReason, string> = {
   notApproved: 'not approved, so it cannot be moved',
@@ -47,6 +48,7 @@ export const DROP_REASON_COPY: Record<DropReason, string> = {
   noQuote: 'no pool will quote it any more',
   underGas: 'now worth less than the gas to sell it',
   aboveLegCeiling: 'quotes above the contract value ceiling',
+  willNotMove: 'cannot be transferred out of your wallet',
 };
 
 export type SweepLeg = {
@@ -119,14 +121,26 @@ export async function requoteForSweep(opts: {
   // first leg drains the balance and the second finds nothing. Harmless
   // but it costs the user a permit slot and a line on the receipt.
   const seen = new Set<string>();
-  const tokens = opts.tokens.filter((t) => {
+  const deduped = opts.tokens.filter((t) => {
     const key = t.address.toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 
-  if (tokens.length === 0) return { legs: [], dropped: [], drifted: [] };
+  // Belt to the UI's braces, and the only one that matters. A token the
+  // will-it-move probe rejected does not fail its own leg: Permit2 pulls
+  // the whole batch in one call, OUTSIDE Sweeper's per-leg try/catch, so
+  // one of these reverts everything after the user has paid for N
+  // approvals. It never goes in a batch even if something upstream
+  // managed to tick it. See lib/willmove.ts.
+  const dropped: DroppedLeg[] = deduped
+    .filter((t) => t.noRouteReason === 'willNotMove')
+    .map((token) => ({ token, reason: 'willNotMove' as const }));
+
+  const tokens = deduped.filter((t) => t.noRouteReason !== 'willNotMove');
+
+  if (tokens.length === 0) return { legs: [], dropped, drifted: [] };
 
   // Balance and allowance together: the permit amount is the smaller of
   // the two. Asking for more than the allowance covers is how an exact
@@ -152,7 +166,6 @@ export async function requoteForSweep(opts: {
   });
 
   const amounts = new Map<string, bigint>();
-  const dropped: DroppedLeg[] = [];
 
   tokens.forEach((t, i) => {
     const bal = state[i * 2];

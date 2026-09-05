@@ -208,6 +208,37 @@ The sweep button reads "Contract not deployed yet" and is a hardcoded
 That button is where the write half plugs in, and `requireSweeper()` is
 what it should call.
 
+**Trap 8: a token can quote perfectly and still refuse to move.**
+**BOW preflight: closed.** BOW
+`0x9b1C8C5CBC20316Fc311F00a6248b6bCf950ed8a` quotes fine and its
+`transfer` reverts `Transfers locked until graduation` unless the
+recipient is its own Uniswap pool. The pool is exempt from the lock,
+which is exactly why quoting cannot see it: the Quoter simulates a swap
+INTO the pool, the one recipient the token allows.
+
+This is not a leg failure. `Sweeper.sweep` pulls every token in one
+`Permit2.permitTransferFrom`, **outside** the per-leg try/catch, so one
+BOW-class token reverts the ENTIRE sweep at simulate time, after the user
+has paid for N approvals. Measured on the fork: 5 approvals paid, then
+`TRANSFER_FROM_FAILED`, nothing sold.
+
+Closed 5 Sep by a will-it-move probe in `app/src/lib/willmove.ts`: an
+`eth_call` of `transfer(SWEEPER, fullBalance)` with `from` set to the
+user, run during the scan alongside the quotes. No approval is needed for
+a plain transfer, so it costs nothing and runs before any wallet prompt.
+A token whose probe reverts goes to "No route out" with
+`noRouteReason: 'willNotMove'`, its checkbox is disabled, and
+`requoteForSweep` drops it as a backstop. **It is a filter in front of
+the post-approval simulate, not a replacement for it.** That simulate
+stays.
+
+**Not a Multicall3 aggregate3, and do not "fix" it into one.**
+`aggregate3` calls each target with `msg.sender` = Multicall3, and the
+`from` on the outer eth_call does not propagate. Multicall3 holds none of
+these tokens, so every probe would revert on insufficient balance and
+every token in the wallet would look stuck. The `from` must be the user,
+which means one `eth_call` each, batched at the JSON-RPC layer.
+
 **Trap 7: not everything in a wallet is dust.** Quoting alone put
 CBBTC, SPY, NVDA, AAPL, GME, TSLA, HIMS and SPCX in the sweepable pile.
 `maxLegValueWei` does not save us -- at 5 ETH it catches the wrapped
@@ -236,6 +267,17 @@ NOT in `.env`. It ships in the bundle like every WalletConnect site's
 does, and is scoped by the domain allowlist in the WalletConnect
 dashboard. Do not "tidy" it into an env var, and never move `RHC_RPC_URL`
 the other way.
+
+**The public RPC's batch limit is weighted by method. Measured 5 Sep.**
+`eth_blockNumber` takes 300 per batch and rejects 301; `eth_call` takes
+50 and rejects 100. An oversized batch comes back as a single 429 OBJECT
+rather than an array, so one batch that is too big fails every call in
+it. This only started mattering when the will-it-move probe became the
+first thing to emit real `eth_call`s one per token instead of packing 30
+into a Multicall3. Hence `batchSize: 25` on the transport in `wagmi.ts`
+and `PROBES_PER_BATCH`/`PROBE_CONCURRENCY` in `willmove.ts`. Full
+measurement and the re-measure procedure in `docs/LOCAL-TESTING.md`,
+"The public RPC's batch limit".
 
 **Bundle cost, measured 4 Sep. Read the right number.** Total emitted
 assets went 0.53 MB -> 3.10 MB, which looks alarming and is the wrong
@@ -449,10 +491,11 @@ bundle and this repo is public.
 **Fork tests are not pinned to a block.** Two runs minutes apart returned
 different CASHCAT figures on identical input (97.998e18, then 98.141e18)
 because the pool is live and the fork follows head. The Noxa numbers were
-byte-identical across both runs, so that pool is quiet. The risk is a red
-test that has nothing to do with the code: `test_FeeTiersCanDisagree`
-asserts the 1% and 0.3% tiers disagree, and an arbitrageur closing that
-gap breaks it. Undecided whether to pin.
+byte-identical across both runs, so that pool is quiet. No assertion
+depends on those figures. Despite its name, `test_FeeTiersCanDisagree`
+only asserts that both tiers quote above zero -- it never compares them --
+so an arbitrageur closing the gap cannot turn it red. An earlier version
+of this file claimed it could. Undecided whether to pin.
 
 Until there is a key, run only the suites that do not fork:
 
@@ -519,15 +562,27 @@ current tool, repo or approach is the right one at all.
 
 ---
 
-## Contract status as of 4 Sep, end of day
+## Contract status as of 5 Sep, end of day
 
-**27/27 tests pass**, first observed green on a working fork RPC, 4 Sep.
+**41/41 tests pass.** 27/27 was first observed green on a working fork
+RPC on 4 Sep; the day-4 security pass took the suite from 27 to 41, and
+all fourteen new tests are mutation-checked.
 
 | Suite | Tests | Forks? | Mutation-verified? |
 |---|---|---|---|
-| `Sweeper.t.sol` | 8 | no, mocks | yes |
+| `Sweeper.t.sol` | 8 | yes, real Permit2, mock tokens | yes |
+| `SweeperBatch.t.sol` | 12 | yes, real Permit2, mock tokens | yes |
+| `SweeperUnwrapFork.t.sol` | 2 | yes, live aeWETH + SwapRouter02 | yes |
 | `BurnAdapter.t.sol` | 7 | no, mocks | no |
 | `V3Adapter.t.sol` | 12 | yes, live mainnet state | no |
+
+**`Sweeper.t.sol` forks.** It calls
+`vm.createSelectFork(vm.rpcUrl("rhc"))` and signs against the real
+Permit2's `DOMAIN_SEPARATOR`; `SweeperBatch.t.sol` does the same. The
+tokens and adapters inside them are mocks, the Permit2 is not, so neither
+suite runs without an RPC. An earlier version of this file listed
+`Sweeper.t.sol` as "no, mocks". `BurnAdapter.t.sol` is the only suite
+that needs no fork.
 
 An earlier version of this file said **"20/20 tests pass"** and attributed
 it to the Sweeper. That was wrong twice. `Sweeper.t.sol` has 8 tests, and
@@ -535,10 +590,12 @@ it to the Sweeper. That was wrong twice. `Sweeper.t.sol` has 8 tests, and
 observed passing. When it was written those 12 V3Adapter tests had never
 executed once. Corrected after the first real fork run.
 
-The mutation testing covers the 8 Sweeper tests only. The contract was
-broken three ways (catch branch not returning the token, leg/permit
-equality check removed, value ceiling removed) and each test went red,
-then the source was restored byte-identical. A green tick that has never
+The original mutation testing covered the 8 `Sweeper.t.sol` tests. The
+contract was broken three ways (catch branch not returning the token,
+leg/permit equality check removed, value ceiling removed) and each test
+went red, then the source was restored byte-identical. The day-4 security
+pass mutation-checked its own 14 tests the same way. `BurnAdapter.t.sol`
+and `V3Adapter.t.sol` remain unmutated. A green tick that has never
 been seen to fail is not evidence. Neither is a count of tests nobody
 has run.
 
@@ -631,6 +688,31 @@ The probe lives at `app/src/components/CapabilityProbe.tsx`, renders only
 at `/?caps`, and is unlinked. Delete it once the write half owns this
 decision at runtime.
 
+**7702 notice: shipped, ERC-1271 behavior of real delegators unverified.**
+
+A delegated EOA has code, and Permit2 branches on that: no code means
+`ecrecover`, code means `IERC1271(signer).isValidSignature(...)`. Anvil
+accounts 0 AND 1 both carry a mainnet-inherited delegation to
+`0x8a5b10eb2faf57665f63709ec4b3943a3b005df6`, which does not implement
+ERC-1271, so the sweep reverts with no data at all.
+
+Shipped 5 Sep in `app/src/lib/delegation.ts`: `getCode` once on connect,
+and if it starts `0xef0100`, a plain notice above the sweep button before
+any approval. The sweep's error card also names the ERC-1271 branch when
+a revert carries no data on an account that has code.
+
+**It warns and does not block, and that is deliberate. Whether
+MetaMask's own smart-account delegator passes ERC-1271 is UNVERIFIED**,
+and it very likely does, since answering that call is the entire point of
+a smart account. Anvil's delegate failing proves nothing about MetaMask's.
+Getting a real MetaMask smart account in front of this is still open.
+
+The detector needs BOTH conditions, and the "no data" half is fiddly:
+viem sets `reason` to the literal string `"execution reverted"` on a bare
+revert, so `isRevertWithoutData` must NOT require `reason === undefined`.
+The first version did and never fired. Test both directions, a detector
+that fires on everything is worse than none.
+
 **The escape hatch does not exist either. Checked 4 Sep, do not re-check.**
 
 If these tokens implemented EIP-2612 the approvals could be free
@@ -677,11 +759,24 @@ likely place for a wrong-convention adapter bug.
 ### Known gaps, ranked
 
 1. `wantPayout = true` untested. Blocks the SWEEP payout, not the sweep.
-2. No fee-on-transfer token in the Sweeper batch suite. Both contracts
-   have comments claiming they handle it; nothing proves it at batch level.
-3. Duplicate token in one permit is unasserted. Traced, no loss vector
-   (the second leg finds a zero balance and skips).
-4. The unwrap leg runs against MockWETH, not live aeWETH.
+2. **No per-leg gas cap.** A leg gets whatever gas is left, so a token
+   that burns it deliberately can starve every leg behind it.
+   `test_BatchSurvivesAGasBurnerGivenEnoughGas` and
+   `test_GasBurnerKillsTheBatchWhenGasIsTight` document both sides of
+   that line; nothing in the contract enforces it.
 
-None of these block a read-only launch, because the contract is not part
-of a read-only launch.
+Closed by the day-4 security pass. Do not re-report these:
+
+- The catch-block bugs. A token that refused `approve`, or refused to be
+  handed back after a failed sale, used to kill the whole batch. Only
+  that leg fails now.
+  (`test_BatchSurvivesATokenThatRefusesApproval`,
+  `test_BatchSurvivesATokenThatCannotEvenBeHandedBack`)
+- Fee-on-transfer at batch level, both exact accounting and the token
+  that eats the entire transfer.
+- Duplicate token in one permit, now asserted to lose nothing.
+- The unwrap leg, now run against live aeWETH on 4663 rather than
+  MockWETH.
+
+Neither remaining gap blocks a read-only launch, because the contract is
+not part of a read-only launch.

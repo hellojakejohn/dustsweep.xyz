@@ -1,6 +1,7 @@
-import { erc20Abi, type PublicClient } from 'viem';
+import { erc20Abi, type Address, type PublicClient } from 'viem';
 import { FEE_TIERS, TOKENS, UNISWAP_V3 } from './addresses';
 import { quoterV2Abi } from './quoter';
+import { probeWillMove } from './willmove';
 import type { HeldToken } from './blockscout';
 
 /**
@@ -72,6 +73,17 @@ export type Pile = 'sweepable' | 'underGas' | 'noRoute' | 'notDust';
 /** Why a token was held back from the sweepable pile. */
 export type NotDustReason = 'robinhoodToken' | 'aboveCeiling' | null;
 
+/**
+ * Why a token is in the no-route pile.
+ *
+ * `willNotMove` is the BOW case and it is not the same problem as the
+ * others: the token has a real quote and a real pool, it just cannot be
+ * transferred to the Sweeper. See lib/willmove.ts. It stays in this pile
+ * rather than getting a fifth one, but it is worth telling apart because
+ * it is the failure that takes the WHOLE batch down, not one leg.
+ */
+export type NoRouteReason = 'noQuote' | 'willNotMove' | null;
+
 export type ScannedToken = HeldToken & {
   /** Read on-chain. This is the number we quote and display, not the
    *  indexer's, which can be stale. */
@@ -90,6 +102,7 @@ export type ScannedToken = HeldToken & {
   quotes: { fee: number; amountOut: bigint | null }[];
   pile: Pile;
   notDustReason: NotDustReason;
+  noRouteReason: NoRouteReason;
 };
 
 export type ScanState = {
@@ -155,19 +168,34 @@ export function classify(args: {
   bestFee: number | null;
   gasCostPerLegWei: bigint;
   onChainName: string;
-}): { pile: Pile; notDustReason: NotDustReason } {
+  /**
+   * From the will-it-move probe. `undefined` means it was not probed --
+   * no Sweeper deployed yet, or a read that failed for a reason saying
+   * nothing about the token. Only an explicit `false` withholds it.
+   */
+  willMove?: boolean;
+}): { pile: Pile; notDustReason: NotDustReason; noRouteReason: NoRouteReason } {
   // A tokenised equity is not dust whatever its pools look like, so this
   // runs before the route check. A Robinhood token with no v3 route is
   // still somebody's stock position, not garbage.
   if (isRobinhoodToken(args.onChainName)) {
-    return { pile: 'notDust', notDustReason: 'robinhoodToken' };
+    return { pile: 'notDust', notDustReason: 'robinhoodToken', noRouteReason: null };
   }
 
   // Ceiling is tested against the RAW quote, not the haircut one. The
   // haircut exists to be pessimistic about proceeds; using it here would
   // make the guard slightly easier to slip past, which is backwards.
   if (args.grossOutWei > NOT_DUST_CEILING_WEI) {
-    return { pile: 'notDust', notDustReason: 'aboveCeiling' };
+    return { pile: 'notDust', notDustReason: 'aboveCeiling', noRouteReason: null };
+  }
+
+  // After the not-dust guards, before the quote check. A token that
+  // quotes beautifully and cannot be handed to the Sweeper is still no
+  // route out, and it is the one failure that takes the WHOLE batch down
+  // rather than its own leg, so it must never be selectable. See
+  // lib/willmove.ts for why quoting alone cannot see this.
+  if (args.willMove === false) {
+    return { pile: 'noRoute', notDustReason: null, noRouteReason: 'willNotMove' };
   }
 
   // No pool, every tier reverted, or the quote rounds to zero.
@@ -175,15 +203,15 @@ export function classify(args: {
   // minOut == 0 by design, because an off-chain quote with no on-chain
   // slippage bound is a sandwich waiting to happen.
   if (args.bestFee === null || args.netOutWei <= 0n) {
-    return { pile: 'noRoute', notDustReason: null };
+    return { pile: 'noRoute', notDustReason: null, noRouteReason: 'noQuote' };
   }
 
   // Strictly greater. Break-even is not worth a transaction.
   if (args.netOutWei <= args.gasCostPerLegWei) {
-    return { pile: 'underGas', notDustReason: null };
+    return { pile: 'underGas', notDustReason: null, noRouteReason: null };
   }
 
-  return { pile: 'sweepable', notDustReason: null };
+  return { pile: 'sweepable', notDustReason: null, noRouteReason: null };
 }
 
 /**
@@ -199,8 +227,15 @@ export async function scanWallet(opts: {
   held: HeldToken[];
   onUpdate: (patch: Partial<ScanState>) => void;
   signal?: AbortSignal;
+  /**
+   * The Permit2 pull target, for the will-it-move probe. Null before the
+   * real deploy, and then the probe is skipped and nothing is withheld.
+   * Pass `SWEEPER`, never `requireSweeper()`: the read half must not
+   * throw on a missing address, which is the whole point of the seam.
+   */
+  sweeper: Address | null;
 }): Promise<void> {
-  const { client, owner, held, onUpdate, signal } = opts;
+  const { client, owner, held, onUpdate, signal, sweeper } = opts;
 
   const candidates = held.filter((t) => !NEVER_SWEEP.has(t.address.toLowerCase()));
   onUpdate({ phase: 'quoting', found: candidates.length, tokens: [] });
@@ -293,7 +328,29 @@ export async function scanWallet(opts: {
   const quoteResults = new Map<string, bigint | null>();
   let quotedTokens = 0;
 
-  await mapWithConcurrency(
+  // Will-it-move, started BEFORE the quote loop and awaited alongside it
+  // rather than after it, so it costs no visible time. It throttles
+  // itself: it cannot use Multicall3, so it is the one part of the scan
+  // that emits real eth_calls one per token. See lib/willmove.ts.
+  //
+  // Both must finish before phase goes to 'done', because 'done' is what
+  // defaultSelection ticks off and a token must never be pre-ticked on a
+  // half-finished probe.
+  const willMove = new Map<string, boolean>();
+  const probing = probeWillMove({
+    client,
+    owner,
+    sweeper,
+    tokens: live.map((t) => ({ address: t.address, balance: t.balance })),
+    signal,
+  })
+    .then((r) => r.forEach((v, k) => willMove.set(k, v)))
+    // A probe that cannot run at all must not fail the whole scan. It is
+    // a filter in FRONT of the post-approval simulate, not a replacement
+    // for it, so losing it degrades to the previous behaviour.
+    .catch(() => {});
+
+  const quoting = mapWithConcurrency(
     chunk(calls, CALLS_PER_MULTICALL),
     CONCURRENCY,
     async (group) => {
@@ -331,15 +388,17 @@ export async function scanWallet(opts: {
       );
       onUpdate({
         quoted: quotedTokens,
-        tokens: assemble(live, quoteResults, gasCostPerLegWei),
+        tokens: assemble(live, quoteResults, gasCostPerLegWei, willMove),
       });
     },
   );
 
+  await Promise.all([probing, quoting]);
+
   onUpdate({
     phase: 'done',
     quoted: live.length,
-    tokens: assemble(live, quoteResults, gasCostPerLegWei),
+    tokens: assemble(live, quoteResults, gasCostPerLegWei, willMove),
   });
 }
 
@@ -349,6 +408,7 @@ function assemble(
   live: (HeldToken & { balance: bigint; onChainName: string })[],
   quoteResults: Map<string, bigint | null>,
   gasCostPerLegWei: bigint,
+  willMove: Map<string, boolean>,
 ): ScannedToken[] {
   const out: ScannedToken[] = [];
 
@@ -374,15 +434,25 @@ function assemble(
     }
 
     const netOutWei = (grossOutWei * (10_000n - QUOTE_HAIRCUT_BPS)) / 10_000n;
-    const { pile, notDustReason } = classify({
+    const { pile, notDustReason, noRouteReason } = classify({
       grossOutWei,
       netOutWei,
       bestFee,
       gasCostPerLegWei,
       onChainName: token.onChainName,
+      willMove: willMove.get(token.address.toLowerCase()),
     });
 
-    out.push({ ...token, quotes, bestFee, grossOutWei, netOutWei, pile, notDustReason });
+    out.push({
+      ...token,
+      quotes,
+      bestFee,
+      grossOutWei,
+      netOutWei,
+      pile,
+      notDustReason,
+      noRouteReason,
+    });
   }
 
   // Most valuable first inside each pile.

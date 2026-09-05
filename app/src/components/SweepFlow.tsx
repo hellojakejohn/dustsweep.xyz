@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { SWEEPER_IS_OVERRIDDEN } from '../lib/addresses';
 import { explorerTx } from '../lib/chain';
+import { DELEGATED_NOTICE } from '../lib/delegation';
 import { formatEth, formatEthTrim, shortAddress } from '../lib/format';
 import { APPROVE_EXACT } from '../lib/permit2';
 import { DROP_REASON_COPY, legTotals, type SweepLeg } from '../lib/requote';
@@ -125,6 +126,7 @@ export function SweepFlow({
         />
       ) : (
         <>
+          {sweep.delegated && <Delegated />}
           <CostLine
             stage={stage}
             approvals={steps.length - stepsDone}
@@ -229,6 +231,24 @@ function CostLine({
             : `${APPROVE_EXACT ? 'Each approval is for the exact balance shown, not unlimited. ' : ''}` +
               'Approvals stick, so stopping part way is not wasted work.'}
       </p>
+    </div>
+  );
+}
+
+/**
+ * An EIP-7702 delegation on the connected account. Above the button and
+ * before the first approval, because the whole point is that somebody
+ * whose signature is going to fail finds out before paying for N
+ * approvals rather than after.
+ *
+ * Deliberately not rendered on the receipt or in the share text. By then
+ * it either worked, in which case it was noise, or it did not, in which
+ * case DELEGATED_REVERT_HINT has already said it in more detail.
+ */
+function Delegated() {
+  return (
+    <div className="mb-3 rounded-md border border-teal bg-raise px-3 py-2.5">
+      <p className="text-[11.5px] leading-relaxed text-muted">{DELEGATED_NOTICE}</p>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { explorerToken } from '../lib/chain';
 import { formatEth, formatEthTrim, formatTokenAmount } from '../lib/format';
 import type { ScannedToken } from '../lib/scan';
+import { WILL_NOT_MOVE_REASON, WILL_NOT_MOVE_SHORT } from '../lib/willmove';
 
 const TIER_LABEL: Record<number, string> = {
   10000: '1%',
@@ -32,6 +33,10 @@ export function TokenRow({
 }) {
   const noRoute = token.pile === 'noRoute';
   const notDust = token.pile === 'notDust';
+  // Not tickable at all, ever. A token that cannot be transferred to the
+  // Sweeper does not fail its own leg, it reverts the whole batch inside
+  // Permit2, so this one is not the user's call to override.
+  const willNotMove = token.noRouteReason === 'willNotMove';
 
   return (
     <label
@@ -42,7 +47,7 @@ export function TokenRow({
       <input
         type="checkbox"
         checked={checked}
-        disabled={disabled}
+        disabled={disabled || willNotMove}
         onChange={() => onToggle(token.address)}
         className="size-[15px] shrink-0 accent-orange"
       />
@@ -67,11 +72,16 @@ export function TokenRow({
       ) : (
         <>
           <span
-            className={`num w-[94px] shrink-0 text-right text-[12px] ${
+            className={`num w-[94px] shrink-0 truncate text-right text-[12px] ${
               noRoute ? 'text-faint' : 'text-tan'
             }`}
+            title={willNotMove ? WILL_NOT_MOVE_REASON : undefined}
           >
-            {noRoute ? 'no quote' : formatEth(token.netOutWei)}
+            {noRoute
+              ? willNotMove
+                ? WILL_NOT_MOVE_SHORT
+                : 'no quote'
+              : formatEth(token.netOutWei)}
           </span>
           <span className="w-[50px] shrink-0 text-right">
             {token.bestFee !== null ? (
