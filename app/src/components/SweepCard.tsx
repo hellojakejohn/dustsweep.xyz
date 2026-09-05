@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount, useSwitchChain } from 'wagmi';
 import { useDustScan } from '../hooks/useDustScan';
 import { chainName, robinhoodChain } from '../lib/chain';
@@ -11,8 +11,11 @@ import {
   type Pile,
   type ScannedToken,
 } from '../lib/scan';
+import { defaultSelection, DEFAULT_SELECT_GAS_MULTIPLE } from '../lib/selection';
+import { useSweep } from '../hooks/useSweep';
 import { ConnectButton } from './Connect';
 import { Section } from './Section';
+import { SweepFlow } from './SweepFlow';
 import { TokenRow } from './TokenRow';
 
 /** Pile dots. These are shapes, so teal is allowed here. */
@@ -33,7 +36,9 @@ const SECTIONS: {
     pile: 'sweepable',
     title: 'Worth sweeping',
     openByDefault: true,
-    note: 'Quotes clear what it costs in gas to sell them.',
+    note:
+      'Quotes clear what it costs in gas to sell them. The ones worth at least ' +
+      `${DEFAULT_SELECT_GAS_MULTIPLE}x their own gas are ticked for you. Change anything you like.`,
   },
   {
     pile: 'underGas',
@@ -54,6 +59,16 @@ const SECTIONS: {
     note: 'These look like real assets. dustsweep will not touch them unless you say so. Ticking one here selects it for sale at the value shown.',
   },
 ];
+
+/** Stages where the selection must not move under the sweep. */
+const LOCKED_STAGES: ReadonlySet<string> = new Set([
+  'approving',
+  'requoting',
+  'drift',
+  'signing',
+  'sweeping',
+  'done',
+]);
 
 export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
   // `useAccount().chainId` is the chain the WALLET is on. `useChainId()`
@@ -77,10 +92,26 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
 
   // Nothing survives a wallet change or a rescan. A checkbox the user
   // did not tick in this scan must never be able to end up in a permit.
-  useEffect(() => setSelected(new Set()), [address]);
+  const touched = useRef(false);
   useEffect(() => {
-    if (scan.phase === 'listing') setSelected(new Set());
+    setSelected(new Set());
+    touched.current = false;
+  }, [address]);
+  useEffect(() => {
+    if (scan.phase === 'listing') {
+      setSelected(new Set());
+      touched.current = false;
+    }
   }, [scan.phase]);
+
+  // The default selection, and the only real lever on tap count in the
+  // product: approvals are per token SELECTED, not per token held. Never
+  // select-all, never anything outside the sweepable pile, and never
+  // once the user has touched a checkbox.
+  useEffect(() => {
+    if (scan.phase !== 'done' || touched.current) return;
+    setSelected(defaultSelection(scan.tokens, scan.gasCostPerLegWei));
+  }, [scan.phase, scan.tokens, scan.gasCostPerLegWei]);
 
   const piles = useMemo(() => {
     const byPile: Record<Pile, ScannedToken[]> = {
@@ -98,6 +129,22 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
     [scan.tokens, selected],
   );
   const totals = totalsFor(selectedTokens, scan.gasCostPerLegWei);
+
+  // Owned here rather than inside SweepFlow: once a sweep is in flight
+  // the checkboxes have to lock, or the batch being signed and the batch
+  // on screen stop being the same batch.
+  const sweep = useSweep({
+    selected: selectedTokens,
+    gasCostPerLegWei: scan.gasCostPerLegWei,
+  });
+  const locked = LOCKED_STAGES.has(sweep.stage);
+
+  /** Every path that changes the selection goes through this, so the
+   *  default tick is never re-applied over the user's own choices. */
+  const setSelectedByUser: SetSelected = (fn) => {
+    touched.current = true;
+    setSelected(fn);
+  };
 
   const scanning = scan.phase === 'listing' || scan.phase === 'quoting';
   const hasRows = scan.tokens.length > 0;
@@ -120,13 +167,16 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
     onStatus('');
   }, [isConnected, onRightChain, chainId, scan.phase, scan.found, scan.quoted, onStatus]);
 
-  const toggle = (addr: `0x${string}`) =>
+  const toggle = (addr: `0x${string}`) => {
+    if (locked) return;
+    touched.current = true;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(addr)) next.delete(addr);
       else next.add(addr);
       return next;
     });
+  };
 
   return (
     <div className="w-full max-w-[560px] rounded-[18px] border border-teal bg-card p-[22px]">
@@ -164,14 +214,16 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
                         <BulkSelect
                           tokens={piles.sweepable}
                           selected={selected}
-                          setSelected={setSelected}
+                          setSelected={setSelectedByUser}
+                          disabled={locked}
                           label="Select all"
                         />
                       ) : s.pile === 'notDust' ? (
                         <NotDustSelect
                           tokens={piles.notDust}
                           selected={selected}
-                          setSelected={setSelected}
+                          setSelected={setSelectedByUser}
+                          disabled={locked}
                         />
                       ) : null
                     }
@@ -182,6 +234,7 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
                         token={t}
                         checked={selected.has(t.address)}
                         onToggle={toggle}
+                        disabled={locked}
                       />
                     ))}
                   </Section>
@@ -192,6 +245,22 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
                 totals={totals}
                 dangerCount={selectedTokens.filter((t) => t.pile === 'notDust').length}
               />
+
+              <SweepFlow
+                sweep={sweep}
+                selected={selectedTokens}
+                allTokens={scan.tokens}
+                gasCostPerLegWei={scan.gasCostPerLegWei}
+                onScanAgain={() => void scan.rescan()}
+              />
+
+              <p className="mt-2.5 text-[11px] text-faint">
+                Non-custodial. Unaudited. Source is public.
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-faint">
+                Quotes carry a {Number(QUOTE_HAIRCUT_BPS) / 100}% haircut. Gas is paid
+                from your ETH balance, not out of the proceeds.
+              </p>
             </>
           )}
         </div>
@@ -218,18 +287,21 @@ function BulkSelect({
   selected,
   setSelected,
   label,
+  disabled,
 }: {
   tokens: ScannedToken[];
   selected: ReadonlySet<string>;
   setSelected: SetSelected;
   label: string;
+  disabled?: boolean;
 }) {
   const allOn = tokens.length > 0 && tokens.every((t) => selected.has(t.address));
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={() => setSelected(applyBulk(tokens, !allOn))}
-      className="shrink-0 rounded border border-teal px-2 py-1 text-[11px] text-muted transition-colors hover:border-orange hover:text-cream"
+      className="shrink-0 rounded border border-teal px-2 py-1 text-[11px] text-muted transition-colors hover:border-orange hover:text-cream disabled:cursor-not-allowed disabled:opacity-40"
     >
       {allOn ? 'Clear' : label}
     </button>
@@ -248,10 +320,12 @@ function NotDustSelect({
   tokens,
   selected,
   setSelected,
+  disabled,
 }: {
   tokens: ScannedToken[];
   selected: ReadonlySet<string>;
   setSelected: SetSelected;
+  disabled?: boolean;
 }) {
   const selectable = tokens.filter((t) => t.notDustReason === 'aboveCeiling');
   if (selectable.length === 0) return null;
@@ -262,8 +336,9 @@ function NotDustSelect({
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={() => setSelected(applyBulk(selectable, !allOn))}
-      className="num shrink-0 rounded border border-teal px-2 py-1 text-[11px] text-tan transition-colors hover:border-orange hover:text-cream"
+      className="num shrink-0 rounded border border-teal px-2 py-1 text-[11px] text-tan transition-colors hover:border-orange hover:text-cream disabled:cursor-not-allowed disabled:opacity-40"
       title="Robinhood stock tokens are not included. Tick those individually."
     >
       {allOn
@@ -281,7 +356,6 @@ function Totals({
   dangerCount: number;
 }) {
   const feePct = Number(SWEEP_FEE_BPS) / 100;
-  const haircutPct = Number(QUOTE_HAIRCUT_BPS) / 100;
 
   return (
     <div className="mt-3 border-t border-teal pt-4">
@@ -309,22 +383,6 @@ function Totals({
           you sign.
         </p>
       )}
-
-      <button
-        type="button"
-        disabled
-        className="mt-4 h-[52px] w-full cursor-not-allowed rounded-lg border border-dashed border-teal bg-raise text-[14px] font-semibold text-muted"
-      >
-        Contract not deployed yet
-      </button>
-
-      <p className="mt-2.5 text-[11px] text-faint">
-        Non-custodial. Unaudited. Source is public.
-      </p>
-      <p className="mt-1 text-[11px] leading-relaxed text-faint">
-        Quotes carry a {haircutPct}% haircut. Gas is paid from your ETH balance, not out of
-        the proceeds.
-      </p>
     </div>
   );
 }

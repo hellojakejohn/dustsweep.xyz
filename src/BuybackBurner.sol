@@ -3,15 +3,7 @@ pragma solidity ^0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
-interface IV3SwapRouter {
-    struct ExactInputSingleParams {
-        address tokenIn; address tokenOut; uint24 fee; address recipient;
-        uint256 amountIn; uint256 amountOutMinimum; uint160 sqrtPriceLimitX96;
-    }
-    function exactInputSingle(ExactInputSingleParams calldata p)
-        external payable returns (uint256);
-}
+import {IV3SwapRouter} from "./IV3SwapRouter.sol";
 
 /// @title BuybackBurner
 /// @notice Receives sweep fees in WETH, buys SWEEP with them, and sends the

@@ -21,30 +21,35 @@ export function TokenRow({
   token,
   checked,
   onToggle,
+  disabled = false,
 }: {
   token: ScannedToken;
   checked: boolean;
   onToggle: (address: `0x${string}`) => void;
+  /** Locked while a sweep is in flight. What is being signed and what is
+   *  on screen have to stay the same batch. */
+  disabled?: boolean;
 }) {
   const noRoute = token.pile === 'noRoute';
   const notDust = token.pile === 'notDust';
 
   return (
     <label
-      className={`flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-[7px] transition-colors hover:bg-raise ${
-        checked ? 'bg-raise' : ''
-      }`}
+      className={`flex items-center gap-2.5 rounded-md px-2 py-[7px] transition-colors ${
+        disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-raise'
+      } ${checked ? 'bg-raise' : ''}`}
     >
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={() => onToggle(token.address)}
         className="size-[15px] shrink-0 accent-orange"
       />
 
       <span
         className="min-w-0 flex-1 truncate text-[13px] text-cream"
-        title={`${token.symbol} — ${token.onChainName}`}
+        title={`${token.symbol} -- ${token.onChainName}`}
       >
         {token.symbol}
       </span>

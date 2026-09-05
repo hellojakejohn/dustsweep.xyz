@@ -4,30 +4,7 @@ pragma solidity ^0.8.30;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ISweepAdapter} from "./ISweepAdapter.sol";
-
-/// @notice Uniswap SwapRouter02 on Robinhood Chain.
-/// @dev    ExactInputSingleParams has NO deadline field. That is the
-///         difference between SwapRouter02 and the original SwapRouter,
-///         and using the wrong struct reverts every swap with no useful
-///         error. Verified against the deployed bytecode at
-///         0xCaf681a66D020601342297493863E78C959E5cb2: selector
-///         0x04e45aaf (SwapRouter02) is present, 0x414bf389 (old) is not.
-interface IV3SwapRouter {
-    struct ExactInputSingleParams {
-        address tokenIn;
-        address tokenOut;
-        uint24 fee;
-        address recipient;
-        uint256 amountIn;
-        uint256 amountOutMinimum;
-        uint160 sqrtPriceLimitX96;
-    }
-
-    function exactInputSingle(ExactInputSingleParams calldata params)
-        external
-        payable
-        returns (uint256 amountOut);
-}
+import {IV3SwapRouter} from "./IV3SwapRouter.sol";
 
 /// @title V3Adapter
 /// @notice Sells one dust token into WETH through Uniswap V3 and hands the
@@ -75,8 +52,14 @@ contract V3Adapter is ISweepAdapter {
     error NoSlippageBound();
     error CannotSellWeth();
     error BadFeeData();
+    error ZeroAddress();
 
+    /// @dev Both are immutable, so a zero here is a permanently bricked
+    ///      adapter. A zero WETH is the worse of the two: `token == WETH`
+    ///      would then reject `address(0)` instead of the real WETH and
+    ///      every swap would route to nowhere.
     constructor(address router, address weth) {
+        if (router == address(0) || weth == address(0)) revert ZeroAddress();
         ROUTER = IV3SwapRouter(router);
         WETH = weth;
     }

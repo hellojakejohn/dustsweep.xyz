@@ -37,11 +37,123 @@ cannot test the sort.
 
 Grab one Pons V1 and one Noxa so the multi-factory indexing gets exercised.
 
-## Still needed: one weird one
+## The weird one: BOW
 
-The checklist asks for a deliberately awkward token, and it is the most
-valuable test case you will have. Candidates worth hunting: fee-on-transfer,
-rebasing, a `transfer` that returns false instead of reverting, a token
-with 0 or 24 decimals, or one whose pool exists but has zero liquidity so
-the quote reverts. Ask Claude (this session) to go find one on-chain if you
-want it picked for you.
+**Buy this one.** Verified on chain 5 Sep 2026.
+
+```
+BOW   0x9b1c8c5cbC20316fc311F00a6248B6bCF950ed8a   18 decimals
+pool  0xae226E172AEe98d7812f7c68EEbD5305E2550d1C   fee tier 10000
+depth 3.828 WETH
+```
+
+3.8 WETH is deeper than every other pool on this page, so a few dollars
+buys you a real position and barely moves the price.
+
+**What is wrong with it: `transfer` only works when the recipient is the
+Uniswap pool.** Anything else reverts with the string
+`Transfers locked until graduation`. It is not from Noxa, Pons V1 or Pons
+V2 -- `getLaunchedToken(BOW)` returns the zero address on all three
+factories, so this is an independently deployed contract, and
+`graduated()` is not part of its ABI (the call reverts with `0x`).
+
+This is the exact shape that defeats the three-pile sort, which is why it
+is worth buying:
+
+- QuoterV2 quotes it perfectly happily. 3.4e24 BOW, which is what 0.01
+  WETH buys, quotes **0.0097 WETH** on the 1% tier. That is ~44x one leg
+  of gas, so the front end puts it confidently in **"worth sweeping"**.
+- The sweep then reverts. `Sweeper.sweep` moves the token to the Sweeper
+  via the Permit2 batch, and the Sweeper is not the pool.
+- A plain Uniswap swap from your own wallet **succeeds**, because
+  SwapRouter02 pulls the token straight from you into the pool and never
+  custodies it. So the token is not broken, it is specifically hostile to
+  any contract that has to hold it mid-flight, which is exactly what a
+  batched sweeper does.
+
+That makes it the test case CLAUDE.md non-negotiable 4 asks for: a
+deliberately broken token in the batch, exercising the try/catch path.
+It should end up in the "no route out" pile, and the honest fix is for
+the preflight to simulate the actual `transferFrom`, not just the quote.
+
+Verified with, in order: `transfer` and `transferFrom` to an EOA both
+revert, both to the pool succeed (anvil fork, real mainnet state);
+`eth_call` of `transfer` with `--from` the real holder
+`0x29e1dFE55ae0Ab953D424f62A0625149BC39b068` reverts the same way on
+mainnet with no fork involved; buy and sell through SwapRouter02 both
+succeed on the fork.
+
+### Second one of the same class, if you want two
+
+```
+FRENS 0x2702a57bA3D6568320F5D7C57f360dFa5763f8A9   18 decimals
+pool  0x7EdA9a5D56D2e50CD21AEAE02f248BAA4dB0bbC6   fee tier 10000
+depth 0.0798 WETH
+```
+
+Same rule, different implementation: reverts with the custom error
+`InvalidTransfer()` (`0x2f352531`) rather than a string, and the thin
+pool puts it near the under-gas boundary. Two tokens means the try/catch
+path is tested against both a string revert and a custom error, which
+decode differently.
+
+### Also worth owning, cheap
+
+```
+4663.wtf      0x9f2D7e134AF234c737e9E42A89A8CbBaa156a5BA  0 decimals   0.0082 WETH  fee 10000
+STONKEXCHANGE 0x5d111f5083c89589009d1d64eAdD84dc615836B4  11 decimals  0.2916 WETH  fee 10000
+```
+
+Both buy and sell cleanly on the fork. `4663.wtf` covers the 0-decimals
+case from the checklist, where an amount and its display value are the
+same number and any `/ 1e18` in the UI is instantly visible.
+STONKEXCHANGE covers non-standard non-zero decimals. No 24-decimal token
+exists on this chain that holds a WETH pool.
+
+### Two you cannot buy, listed so nobody re-hunts them
+
+```
+Stock Coin 0x4ec7150FC4f2090a8F3352dF6cf4D8a206749304  0.604 WETH  fee 10000
+$1         0x8c515613d4910A989d1465f931bB5004B42cCCf7  0 WETH      pools at 10000 and 500
+```
+
+**Stock Coin** reverts every transfer with `MarketClosed(uint256)`, and
+the argument is a timestamp telling you when it reopens. On 5 Sep it
+returned `1788787800` = **Mon 7 Sep 2026 13:30 UTC**, which is 9:30 ET,
+US market open. It is transferable during US equity market hours and not
+otherwise. Worth knowing this class exists on a Robinhood chain: it is a
+token that passes every test on a Tuesday afternoon and fails the same
+test on a Saturday. The buy failed on the fork for the same reason.
+
+**`$1`** ("$1 is all you need") is the zero-liquidity case from the
+checklist. Pools exist at both 10000 and 500, both hold 0 WETH, and
+QuoterV2 reverts with `Unexpected error`. You cannot buy it, so it
+cannot go in a wallet, but the address is here if you want to point a
+quote at it directly. 74 tokens in the scanned set are in this state.
+
+### What is NOT on this chain
+
+Scanned all **10,901** tokens that hold a WETH pool with at least 0.01
+WETH, simulating a real `transfer` on each one via `eth_call` with a
+state override that injects a probe contract at a genuine holder's
+address. No transaction was sent.
+
+- **fee-on-transfer: zero found.** Not one token delivered less than it
+  was sent.
+- **`transfer` returning `false` instead of reverting: zero found.**
+- **rebasing: not tested.** Detecting it needs two reads separated in
+  time, which this pass did not do.
+
+Do not go shopping for a fee-on-transfer token here. The chain's dust is
+overwhelmingly Noxa and Pons template tokens, which are plain ERC-20s.
+Known gap 2 in CLAUDE.md (no fee-on-transfer token in the Sweeper batch
+suite) cannot be closed with a real token from this chain; it needs a
+mock.
+
+Caveat on that scan: the probe capped each `transfer` at 400k gas, so a
+token needing more shows up as a revert rather than as its real
+behaviour. Four did. Three were the locked tokens above. The fourth,
+CashBack Cat `0xFf8efFDd6332B283f83f5e4B6f3580445fC93362`, transfers
+cleanly with no fee once the cap is raised to 8M, so it is not hostile,
+just expensive. Its `transfer` costing over 400k gas is worth
+remembering when sizing gas for a batch leg.

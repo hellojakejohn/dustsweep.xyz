@@ -5,6 +5,8 @@ interface ImportMetaEnv {
   readonly VITE_RPC_URL?: string;
   /** Deployed Sweeper address, for a local fork. See src/lib/addresses.ts. */
   readonly VITE_SWEEPER?: string;
+  /** Deployed V3Adapter address, for a local fork. See src/lib/addresses.ts. */
+  readonly VITE_V3_ADAPTER?: string;
   /** Comma-separated token list for a fork run. See src/lib/fixture.ts. */
   readonly VITE_HELD_TOKENS?: string;
 }

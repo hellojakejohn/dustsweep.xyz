@@ -196,3 +196,35 @@ export function requireSweeper(): `0x${string}` {
   }
   return SWEEPER;
 }
+
+/**
+ * The V3Adapter, deployed alongside the Sweeper by the same script and
+ * whitelisted by it in the same broadcast. Every leg names its adapter,
+ * so the write half needs this address as much as it needs the Sweeper's,
+ * and `Sweeper.sweep` reverts `AdapterNotAllowed` if it is wrong.
+ *
+ * Same rules as above: empty until the real deploy, env override wins,
+ * a deployed address is public by construction.
+ */
+const V3_ADAPTER_DEPLOYED: string = '';
+
+const adapterRaw = import.meta.env.VITE_V3_ADAPTER?.trim() || V3_ADAPTER_DEPLOYED;
+
+export const V3_ADAPTER: `0x${string}` | null =
+  ADDR_RE.test(adapterRaw) ? (adapterRaw as `0x${string}`) : null;
+
+export const V3_ADAPTER_IS_OVERRIDDEN =
+  V3_ADAPTER !== null && adapterRaw !== V3_ADAPTER_DEPLOYED;
+
+/** Same contract as `requireSweeper`, for the same reason. */
+export function requireV3Adapter(): `0x${string}` {
+  if (V3_ADAPTER === null) {
+    throw new Error(
+      'No V3Adapter address. It is the second address script/Deploy.s.sol ' +
+        'prints. Set VITE_V3_ADAPTER for a local fork or fill in ' +
+        'V3_ADAPTER_DEPLOYED in app/src/lib/addresses.ts. ' +
+        'See docs/LOCAL-TESTING.md.',
+    );
+  }
+  return V3_ADAPTER;
+}

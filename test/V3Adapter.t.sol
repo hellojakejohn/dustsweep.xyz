@@ -197,6 +197,16 @@ contract V3AdapterForkTest is Test {
         adapter.sell(WETH, 1e18, 1, "");
     }
 
+    /// Both constructor arguments are immutable. A zero WETH would make the
+    /// `token == WETH` guard reject address(0) instead of the real WETH and
+    /// route every swap to nowhere, permanently.
+    function test_ConstructorRejectsZeroAddresses() public {
+        vm.expectRevert(V3Adapter.ZeroAddress.selector);
+        new V3Adapter(address(0), WETH);
+        vm.expectRevert(V3Adapter.ZeroAddress.selector);
+        new V3Adapter(ROUTER, address(0));
+    }
+
     function test_RevertsOnMalformedFeeData() public {
         vm.expectRevert(V3Adapter.BadFeeData.selector);
         adapter.sell(NOXA_TOKEN, 1e18, 1, hex"dead");

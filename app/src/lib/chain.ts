@@ -63,3 +63,12 @@ export const QUOTER_V2 = UNISWAP_V3.quoterV2;
 export function explorerToken(address: string) {
   return `${EXPLORER}/token/${address}`;
 }
+
+/**
+ * Blockscout indexes MAINNET. On a fork this link points at a hash that
+ * chain has never seen, which is a 404 rather than a lie, but it is
+ * worth knowing before clicking it during a local run.
+ */
+export function explorerTx(hash: string) {
+  return `${EXPLORER}/tx/${hash}`;
+}

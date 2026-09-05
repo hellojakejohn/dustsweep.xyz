@@ -10,7 +10,7 @@
  *
  *     N approve transactions  ->  1 signature  ->  1 sweep transaction
  *
- * not "one transaction". Show that honestly. See `approvalsNeeded()`.
+ * not "one transaction". Show that honestly. See `approvalPlan()`.
  */
 
 import type { Address, WalletClient, PublicClient, Hex } from 'viem';
@@ -65,15 +65,45 @@ const PERMIT2_NONCE_ABI = [{
 }] as const;
 
 /**
- * Which of these tokens still need a one-off ERC20 approve to Permit2.
- * Call this BEFORE showing a cost estimate, and put the count in front of
- * the user. Each one is a transaction they pay for.
+ * Exact-amount approvals, not `type(uint256).max`.
+ *
+ * Uniswap's own front end approves Permit2 for the maximum and never
+ * asks again, and that is a defensible choice. It is not this one. The
+ * disclosure line under the card says "exact-amount approvals" in every
+ * state, and a wallet prompt reading "Unlimited" three seconds after a
+ * stranger read that line is the kind of small lie this whole project
+ * is a bet against. Dust gets swept once, so the cost of re-approving is
+ * theoretical and the cost of that prompt is the funnel.
+ *
+ * Flip this to false to go back to infinite approvals. Everything else,
+ * including the plan builder and the amount-aware allowance check below,
+ * works unchanged either way.
  */
-export async function approvalsNeeded(
+export const APPROVE_EXACT = true;
+
+/**
+ * One wallet confirmation. A token whose allowance is non-zero but too
+ * small needs two: some ERC20s (the USDT shape) revert on a non-zero to
+ * non-zero `approve`, so the allowance is zeroed first. Both steps are
+ * shown to the user rather than collapsed, because the count in front of
+ * them has to be the number of times the wallet will actually pop up.
+ */
+export type ApprovalStep = {
+  kind: 'reset' | 'approve';
+  token: Address;
+  symbol: string;
+  /** What to approve. Zero for a reset. */
+  amount: bigint;
+};
+
+export async function readAllowances(
   publicClient: PublicClient,
   owner: Address,
   tokens: Address[],
-): Promise<Address[]> {
+): Promise<Map<string, bigint>> {
+  const out = new Map<string, bigint>();
+  if (tokens.length === 0) return out;
+
   const results = await publicClient.multicall({
     contracts: tokens.map((token) => ({
       address: token,
@@ -84,22 +114,74 @@ export async function approvalsNeeded(
     allowFailure: true,
   });
 
-  const needed: Address[] = [];
   results.forEach((r, i) => {
-    // A token whose allowance call reverts is not sweepable anyway; the
-    // scan should already have binned it. Treat it as needing approval so
-    // the failure surfaces early rather than mid-sweep.
-    if (r.status !== 'success' || (r.result as bigint) === 0n) needed.push(tokens[i]);
+    // A token whose `allowance` reverts is not a token we can sweep. Call
+    // it zero so it shows up as needing approval and fails at the first
+    // step, in front of the user, rather than silently mid-sweep.
+    out.set(
+      tokens[i].toLowerCase(),
+      r.status === 'success' ? (r.result as bigint) : 0n,
+    );
   });
-  return needed;
+  return out;
 }
 
-export function approveTx(token: Address) {
+/**
+ * The wallet confirmations this selection costs, in order.
+ *
+ * Call this BEFORE showing a cost estimate and put the count in front of
+ * the user. Each entry is a transaction they pay for.
+ *
+ * Note this compares against the AMOUNT, not against zero. With exact
+ * approvals a leftover allowance smaller than the balance is worse than
+ * no allowance at all: a zero-check would call it approved and the sweep
+ * would revert inside Permit2's `transferFrom` with nothing useful.
+ */
+export function approvalPlan(
+  wants: { token: Address; symbol: string; amount: bigint }[],
+  allowances: Map<string, bigint>,
+): ApprovalStep[] {
+  const steps: ApprovalStep[] = [];
+
+  for (const want of wants) {
+    if (want.amount === 0n) continue;
+    const current = allowances.get(want.token.toLowerCase()) ?? 0n;
+    if (current >= want.amount) continue;
+
+    if (current > 0n) {
+      steps.push({ kind: 'reset', token: want.token, symbol: want.symbol, amount: 0n });
+    }
+    steps.push({
+      kind: 'approve',
+      token: want.token,
+      symbol: want.symbol,
+      amount: APPROVE_EXACT ? want.amount : maxUint256,
+    });
+  }
+
+  return steps;
+}
+
+/** The tokens that still need at least one confirmation. */
+export async function approvalsNeeded(
+  publicClient: PublicClient,
+  owner: Address,
+  wants: { token: Address; symbol: string; amount: bigint }[],
+): Promise<ApprovalStep[]> {
+  const allowances = await readAllowances(
+    publicClient,
+    owner,
+    wants.map((w) => w.token),
+  );
+  return approvalPlan(wants, allowances);
+}
+
+export function approveTx(token: Address, amount: bigint) {
   return {
     address: token,
     abi: ERC20_APPROVE_ABI,
     functionName: 'approve' as const,
-    args: [PERMIT2, maxUint256] as const,
+    args: [PERMIT2, amount] as const,
   };
 }
 
@@ -153,7 +235,15 @@ export async function signSweepPermit(
 
   const nonce = await findUnusedNonce(publicClient, owner);
   const block = await publicClient.getBlock();
-  const deadline = block.timestamp + ttl;
+
+  // Floored at wall clock. On 4663 the two agree to within a couple of
+  // blocks, but an idle anvil fork does not mine, so `block.timestamp`
+  // there is the time of the last transaction -- half an hour of reading
+  // the screen and every signature is born expired. Taking the later of
+  // the two is correct on both.
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const base = block.timestamp > now ? block.timestamp : now;
+  const deadline = base + ttl;
 
   const signature = await walletClient.signTypedData({
     account: owner,
