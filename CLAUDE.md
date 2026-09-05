@@ -510,6 +510,9 @@ forge test --fork-url $ALCHEMY_URL
 anvil --fork-url $ALCHEMY_URL
 ```
 
+`app/scripts/run-signer.mjs` replays the full sell flow against the fork
+with the app's real lib code; `PROBE_OFF=1` reproduces the BOW trap.
+
 ---
 
 ## Economics, measured 4 Sep 2026
