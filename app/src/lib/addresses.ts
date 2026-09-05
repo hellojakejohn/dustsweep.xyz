@@ -141,3 +141,58 @@ export const PERMIT2_BATCH_TRANSFER_SELECTOR = '0xedd9444b';
  * so SwapRouter02.unwrapWETH9 works. Verified.
  */
 export const WETH_IMPL = '0xc6b81b429797e0f555440b70cd99e032d7ae947e';
+
+/* ------------------------------------------------------------------ *
+ * OURS. Everything above this line is a fact about Robinhood Chain and
+ * was read off the chain. Everything below it is a contract we deployed,
+ * so it is empty until `script/Deploy.s.sol` has run and it is wrong the
+ * moment you redeploy.
+ * ------------------------------------------------------------------ */
+
+/**
+ * The mainnet Sweeper. Commit this one when the real deploy happens.
+ * Leave it empty until then: an address here that is not live is worse
+ * than none, because the failure is a revert at signing time rather than
+ * a message at load time.
+ */
+const SWEEPER_DEPLOYED: string = '';
+
+const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * Local fork override, same shape as VITE_RPC_URL:
+ *
+ *   VITE_SWEEPER=0x... VITE_RPC_URL=http://127.0.0.1:8545 npm run dev
+ *
+ * anvil hands out a fresh Sweeper address every time you restart it and
+ * redeploy, so this is an env var rather than an edit to a tracked file.
+ *
+ * Unlike RHC_RPC_URL this is safe in the bundle. A deployed contract
+ * address is public by construction. That is not true of the Alchemy
+ * key, which is Foundry-only and must never appear under app/.
+ */
+const sweeperRaw = import.meta.env.VITE_SWEEPER?.trim() || SWEEPER_DEPLOYED;
+
+export const SWEEPER: `0x${string}` | null =
+  ADDR_RE.test(sweeperRaw) ? (sweeperRaw as `0x${string}`) : null;
+
+/** True when the Sweeper came from the env override, i.e. a local fork. */
+export const SWEEPER_IS_OVERRIDDEN =
+  SWEEPER !== null && sweeperRaw !== SWEEPER_DEPLOYED;
+
+/**
+ * The write half calls this. Do not read SWEEPER directly on a
+ * transaction path: a missing address there means a Permit2 batch signed
+ * with a spender of nobody, which spends the user's approvals for
+ * nothing and is unrecoverable in a funnel where almost no one returns.
+ */
+export function requireSweeper(): `0x${string}` {
+  if (SWEEPER === null) {
+    throw new Error(
+      'No Sweeper address. Run script/Deploy.s.sol, then set VITE_SWEEPER ' +
+        'for a local fork or fill in SWEEPER_DEPLOYED in ' +
+        'app/src/lib/addresses.ts. See docs/LOCAL-TESTING.md.',
+    );
+  }
+  return SWEEPER;
+}

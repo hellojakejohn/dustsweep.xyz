@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePublicClient } from 'wagmi';
 import { fetchHeldTokens } from '../lib/blockscout';
+import { FIXTURE_IS_ON, fetchFixtureTokens } from '../lib/fixture';
 import { emptyScan, scanWallet, type ScanState } from '../lib/scan';
 
 /**
@@ -26,7 +27,11 @@ export function useDustScan(address: `0x${string}` | undefined) {
     };
 
     try {
-      const held = await fetchHeldTokens(address, controller.signal);
+      // Blockscout indexes mainnet and cannot see an anvil fork, so a
+      // fork run supplies its own token list. See lib/fixture.ts.
+      const held = FIXTURE_IS_ON
+        ? await fetchFixtureTokens(client, address)
+        : await fetchHeldTokens(address, controller.signal);
       patch({ found: held.length });
       await scanWallet({
         client,

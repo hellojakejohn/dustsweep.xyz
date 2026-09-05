@@ -26,7 +26,7 @@ interface IV3SwapRouter {
 ///         tokens so the sweeper has something honest to sweep.
 ///
 /// Against a LOCAL FORK (free, recommended first):
-///   anvil --fork-url https://rpc.mainnet.chain.robinhood.com --chain-id 4663
+///   anvil --fork-url $RHC_RPC_URL --chain-id 4663
 ///   forge script script/BuyDust.s.sol:BuyDust --rpc-url http://127.0.0.1:8545 \
 ///     --broadcast --private-key <one of the keys anvil prints>
 ///
@@ -36,6 +36,18 @@ interface IV3SwapRouter {
 ///
 /// Anvil's printed keys are public, published test keys. Never fund them
 /// on a real chain and never reuse one anywhere that matters.
+///
+/// @dev Do not use the script's own sender as a recipient in here. Inside
+///      `run()` it is only the broadcaster by coincidence of the flags.
+///      Foundry resolves the two separately: `--sender` wins for
+///      broadcasting, a sole `--private-key` wins for the script sender,
+///      and before Foundry v1.7.0 `--account` set neither, leaving it as
+///      the default 0x1804c8AB...1f38. A recipient read from the wrong one
+///      sends the fixture to an address nobody holds the key for, and then
+///      prints a balance that looks correct because the read is wrong the
+///      same way. `vm.readCallers()` inside the broadcast is the real
+///      broadcaster. Capture it there: after `stopBroadcast` it reverts to
+///      the script sender. See foundry-rs/foundry#8892 and #7255.
 contract BuyDust is Script {
     address constant WETH   = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
     address constant ROUTER = 0xCaf681a66D020601342297493863E78C959E5cb2;
@@ -64,6 +76,9 @@ contract BuyDust is Script {
 
         vm.startBroadcast();
 
+        // The address actually sending these transactions. See the note above.
+        (, address me,) = vm.readCallers();
+
         IWETH9(WETH).deposit{value: total}();
         IERC20(WETH).approve(ROUTER, total);
 
@@ -74,7 +89,7 @@ contract BuyDust is Script {
             try IV3SwapRouter(ROUTER).exactInputSingle(
                 IV3SwapRouter.ExactInputSingleParams({
                     tokenIn: WETH, tokenOut: tokens[i], fee: FEE,
-                    recipient: msg.sender, amountIn: spend[i],
+                    recipient: me, amountIn: spend[i],
                     amountOutMinimum: 0, sqrtPriceLimitX96: 0
                 })
             ) returns (uint256 out) {
@@ -87,9 +102,9 @@ contract BuyDust is Script {
         vm.stopBroadcast();
 
         console.log("");
-        console.log("Dust fixture for", msg.sender);
+        console.log("Dust fixture for", me);
         for (uint256 i; i < tokens.length; ++i) {
-            console.log(tokens[i], IERC20(tokens[i]).balanceOf(msg.sender));
+            console.log(tokens[i], IERC20(tokens[i]).balanceOf(me));
         }
     }
 }

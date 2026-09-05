@@ -3,6 +3,7 @@ import { CapabilityProbe } from './components/CapabilityProbe';
 import { ConnectButton } from './components/Connect';
 import { SweepCard } from './components/SweepCard';
 import { robinhoodChain } from './lib/chain';
+import { FIXTURE_IS_ON } from './lib/fixture';
 import { RPC_IS_OVERRIDDEN } from './lib/rpc';
 
 /** Verified public on 4 Sep 2026. Keep this a real link or plain text --
@@ -42,9 +43,9 @@ export function App() {
           </span>
           {/* Never hidden at any breakpoint, and never quiet. Demoing a
               fork that looks exactly like mainnet has burned people. */}
-          {RPC_IS_OVERRIDDEN && (
+          {(RPC_IS_OVERRIDDEN || FIXTURE_IS_ON) && (
             <span className="inline-flex h-8 items-center rounded-lg border border-tan px-2.5 text-[11px] font-semibold text-tan">
-              local fork
+              {FIXTURE_IS_ON ? 'fork fixture' : 'local fork'}
             </span>
           )}
           <ConnectButton />

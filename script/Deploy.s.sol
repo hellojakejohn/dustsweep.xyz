@@ -62,6 +62,8 @@ contract Deploy is Script {
         console.log("    --verifier blockscout \\");
         console.log("    --verifier-url https://robinhoodchain.blockscout.com/api");
         console.log("");
-        console.log("Then put the Sweeper address in app/src/lib/addresses.ts");
+        console.log("Local fork: restart the app with");
+        console.log("  VITE_RPC_URL=http://127.0.0.1:8545 VITE_SWEEPER=<sweeper> npm run dev");
+        console.log("Real deploy: put it in SWEEPER_DEPLOYED in app/src/lib/addresses.ts");
     }
 }

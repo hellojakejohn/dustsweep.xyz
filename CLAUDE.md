@@ -176,6 +176,29 @@ Verified against two real mainnet wallets on 4 Sep 2026: a 184-token
 wallet sorted 29 sweepable / 17 under gas / 123 no route / 13 not dust,
 552 quote calls in ~18s on the public RPC without rate limiting.
 
+**Verified end to end on a local anvil fork, 4 Sep 2026 evening.** Five
+`BuyDust.s.sol` tokens against the deployed Sweeper on the fork, scanned
+through the `VITE_HELD_TOKENS` fixture path:
+
+```
+Worth sweeping           4   TOAD, DEBTCAT, BANKERS, doginhood
+Costs more than it's worth 1
+No route out             0
+Not dust                 0
+```
+
+Each of the four quoted **0.00190 ETH** on the 1% tier, against roughly
+0.00018 per leg in gas at the fork's ~1 gwei. The fifth was the
+deliberate 0.00002 ETH buy and landed under gas as designed. That is the
+first time the three-pile sort has been observed working against a
+fixture built on purpose rather than against whatever a real wallet
+happened to hold.
+
+The sweep button reads "Contract not deployed yet" and is a hardcoded
+`disabled` placeholder in `SweepCard.tsx`, not a failed address read.
+That button is where the write half plugs in, and `requireSweeper()` is
+what it should call.
+
 **Trap 7: not everything in a wallet is dust.** Quoting alone put
 CBBTC, SPY, NVDA, AAPL, GME, TSLA, HIMS and SPCX in the sweepable pile.
 `maxLegValueWei` does not save us -- at 5 ETH it catches the wrapped
@@ -245,6 +268,23 @@ scan, quote every held token through QuoterV2, three-pile sort
 **Write half (needs the deployed Sweeper address + ABI):** Permit2 batch
 signature, the sweep transaction, receipt and share card.
 
+**The Sweeper address lives in `app/src/lib/addresses.ts`.** Added 4 Sep;
+before that the runbook told you to put it there and there was no slot to
+put it in. Three exports:
+
+- `SWEEPER_DEPLOYED`, the committed mainnet address, empty until the real
+  deploy. An address here that is not live is worse than none: it fails
+  at signing time instead of at load time.
+- `VITE_SWEEPER`, an env override that wins, same shape as
+  `VITE_RPC_URL`. anvil hands out a fresh Sweeper every restart, so local
+  work never edits a tracked file. Safe in the bundle, unlike
+  `RHC_RPC_URL`: a deployed address is public by construction.
+- `requireSweeper()`, which throws with the runbook in the message. **The
+  write half must call this, never read `SWEEPER` directly.** A missing
+  address on a transaction path means a Permit2 batch signed with a
+  spender of nobody, which spends the user's approvals for nothing, in a
+  funnel where almost no one comes back.
+
 Build the read half completely first. It is roughly 70% of the work and
 you can load the site and watch real dust get sorted before a single
 contract is deployed.
@@ -252,6 +292,27 @@ contract is deployed.
 ### Finding a user's dust
 
 **Blockscout, no API key required. Verified working.**
+
+**It indexes MAINNET, and that makes it the one step of the read half a
+local fork cannot use.** Everything downstream of discovery reads through
+the wagmi client and follows `VITE_RPC_URL`. Discovery does not: it is a
+plain `fetch` to `robinhoodchain.blockscout.com`. So an anvil account
+holding five freshly bought dust tokens on the fork scans as **"No dust
+found. Scanned 0 tokens."**, which is the app being honest about a wallet
+that really is empty on the chain Blockscout watches. Found 4 Sep by
+running the fork end to end; nothing about it is visible from reading the
+code path in isolation.
+
+Fork runs therefore supply the list themselves, via
+`VITE_HELD_TOKENS` and `app/src/lib/fixture.ts`, which reads `symbol`,
+`name`, `decimals` and `balanceOf` off whatever chain the client points
+at. Unset, that file is inert and Blockscout is the only path. The header
+badge reads "fork fixture" rather than "local fork" when it is on.
+
+This is also the shape of the eventual provenance fix (open item 5):
+discovery is a separate, swappable source, and indexing `TokenDeployed`
+from both factories would replace Blockscout on the same seam and work on
+a fork for free.
 
 ```
 GET https://robinhoodchain.blockscout.com/api/v2/addresses/{address}/token-balances
@@ -312,6 +373,47 @@ forge verify-contract <addr> src/V3Adapter.sol:V3Adapter \
   --verifier blockscout \
   --verifier-url https://robinhoodchain.blockscout.com/api --rpc-url rhc
 ```
+
+---
+
+### Never use `msg.sender` as a recipient in a script
+
+Inside `run()`, `msg.sender` is the **script sender**, which Foundry
+resolves separately from the **broadcaster**. They agree under
+`--private-key` with no `--sender`, which is the only reason
+`BuyDust.s.sol` was not already sending its fixture into the void. They
+diverge two ways:
+
+- `--sender 0xA` together with `--private-key` for `0xB`: `0xA`
+  broadcasts, `0xB` is `msg.sender`. The Book says `--sender` wins; the
+  source disagrees for `msg.sender` specifically. Do not pass both.
+- `--account <keystore>`, `--ledger`, `--mnemonic` on Foundry **before
+  v1.7.0**: the sender is not derived at all and `msg.sender` stays
+  `0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38`. Both script docstrings
+  recommend `--account` for the real-chain run, so this is live risk on
+  step 4 of the sequence, not a hypothetical.
+
+The failure is silent both ways: tokens go to an address nobody holds the
+key for, and the balance printed afterwards reads the same wrong address
+so the log looks correct.
+
+The fix, applied to `BuyDust.s.sol` 4 Sep:
+
+```solidity
+vm.startBroadcast();
+(, address me,) = vm.readCallers();   // the real broadcaster
+```
+
+Capture it **inside** the broadcast. After `stopBroadcast`, `readCallers`
+returns the script sender again. Verified against foundry source
+(`crates/script/src/lib.rs` `maybe_load_private_key`,
+`crates/cheatcodes/src/script.rs` `broadcast`,
+`crates/cheatcodes/src/evm.rs` `read_callers`) and foundry-rs/foundry
+issues #8892, #7255, #3917, discussion #13346.
+
+`Deploy.s.sol` does not use `msg.sender` and needs no change. Its
+`Ownable(msg.sender)` is inside the deployed contract's constructor,
+where `msg.sender` is correctly the broadcaster.
 
 ---
 
@@ -382,6 +484,11 @@ Do not cut it.
    tokens, `slither .`, `aderyn .`, sweeping Jake's own wallet first, the
    receipt/share card, the unaudited disclosure.
 3. Set `maxLegValueWei` LOW for launch. 0.5 ETH, not 5.
+3b. **Rotate the Alchemy key before launch.** It was printed in a terminal
+   title bar and in anvil's Fork block during local testing on 4 Sep, and
+   this is a build-in-public project whose terminal gets screenshotted.
+   Deferred deliberately, not forgotten. Rotate in the Alchemy dashboard,
+   update `.env`, confirm `forge build` and one fork test still pass.
 4. Test the batch with a deliberately broken token in it. The try/catch
    path is the one that matters and the one nobody tests.
 5. Test with a token NOT in the permit. It must be untouched.
@@ -473,6 +580,75 @@ Honest framing: the burner cannot be rugged, the sweeper is
 owner-controlled with capped fees and no custody, and here is the key
 that controls it. Hardware wallet for the owner key. If volume shows up,
 put a timelock on `setAdapter`.
+
+### No wallet batching on 4663. Measured 4 Sep 2026.
+
+Robinhood Chain's own docs claim EIP-7702 support, which would let a
+plain EOA bundle every Permit2 approval and the sweep into ONE
+confirmation. **The wallet decides, not the chain, and MetaMask says no.**
+
+Asked directly via `wallet_getCapabilities` (EIP-5792) from MetaMask's
+in-app browser, connected and switched to 4663. It answered with seven
+chains, all `atomic: ready`:
+
+```
+1 (Ethereum)  56 (BNB)  137 (Polygon)  143  10143  59144 (Linea)  11155111 (Sepolia)
+```
+
+**4663 is not in that list.** Absent means unsupported. There is no
+"maybe", the wallet enumerated what it will batch and Robinhood Chain is
+not on it.
+
+Consequences, and they are design-level:
+
+1. The write half builds a **queue of approvals with honest progress**,
+   not a single confirmation. A first-time wallet with N sweepable
+   tokens pays N approval transactions, then one signature, then one
+   sweep.
+2. The landing page stays at **"1 signature"**. Do not put "1
+   transaction" back. It was false in the original copy, it is still
+   false, and this is the second time that claim has had to be walked
+   back.
+3. Because most users sweep once and never return, that first-run
+   approval queue IS the funnel. There is no second visit to recover a
+   bad first one. Treat approval-step UX as conversion-critical, not as
+   plumbing.
+4. **This will probably flip.** MetaMask enables 7702 chain by chain and
+   4663 is nine weeks old. Build the sweep behind a seam that can switch
+   to `useSendCalls` when `atomic` shows up for 4663, so turning it on
+   later is a branch, not a rewrite. Re-run the probe before launch.
+
+The probe lives at `app/src/components/CapabilityProbe.tsx`, renders only
+at `/?caps`, and is unlinked. Delete it once the write half owns this
+decision at runtime.
+
+**The escape hatch does not exist either. Checked 4 Sep, do not re-check.**
+
+If these tokens implemented EIP-2612 the approvals could be free
+signatures folded into the sweep transaction, giving one click with no
+7702 involved. They do not. Both factories, three calls, all reverted
+with `0x`:
+
+```
+Noxa    0x955b339944CbD4834156366D766C260C80956B44  DOMAIN_SEPARATOR()  revert
+Noxa    0x955b339944CbD4834156366D766C260C80956B44  nonces(address)     revert
+PonsV1  0x97133372cC4391A4F6889b4d52387649B76BC7EC  DOMAIN_SEPARATOR()  revert
+```
+
+Controlled: `symbol()` on the same Noxa address returns `"doginhood"`,
+so the contract is live and those functions are genuinely absent rather
+than the calls failing for some unrelated reason.
+
+Both factories mint from one template, so this is all-or-nothing across
+~63,000 tokens, not a per-token property worth probing at runtime.
+
+**No contract-side trick fixes this.** The constraint is on the user's
+account, not on ours: an EOA does exactly one thing per transaction.
+Routing tokens through a proxy does not help, it just replaces N
+approvals with N transfers at the same tap count while making the
+contract custodial, which trades the entire non-custodial pitch for
+nothing. N approvals, one signature, one sweep is the floor until a
+wallet enables 7702 here.
 
 ### The payout path is unreachable at launch
 
