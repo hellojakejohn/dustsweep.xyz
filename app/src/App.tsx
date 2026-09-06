@@ -92,11 +92,6 @@ export function App() {
           .
         </p>
 
-        <p className="mt-2 px-1 text-center text-[11.5px] leading-relaxed text-faint">
-          Two launchpads shipped ~63,000 tokens onto this chain, then turned off their front
-          ends. Somebody has to sweep.
-        </p>
-
         {SHOW_CAPS && <CapabilityProbe />}
       </main>
 

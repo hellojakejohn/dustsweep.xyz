@@ -162,12 +162,10 @@ export function SweepFlow({
         </>
       )}
 
-      {sweep.atomic === 'ready' && (
-        <p className="mt-2.5 text-[11px] leading-relaxed text-tan">
-          Your wallet now says it can batch on this chain. The approvals below still
-          go one at a time until that path has been tested. See lib/batching.ts.
-        </p>
-      )}
+      {/* `sweep.atomic === 'ready'` used to print a dev note here about
+          lib/batching.ts. Removed 6 Sep: it is not a user's concern, and
+          the approval queue below already says how many prompts to
+          expect. The capability is still read; nothing else changed. */}
 
       {SWEEPER_IS_OVERRIDDEN && (
         <p className="mt-2.5 text-[11px] leading-relaxed text-tan">

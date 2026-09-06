@@ -28,6 +28,15 @@ export type SweepEvent = {
   symbols: string[];
 };
 
+export type LastSweep = {
+  txHash: `0x${string}`;
+  symbols: string[];
+  legsFilled: number;
+  userOutWei: bigint;
+  /** Unix ms. Block timestamp for the backfilled one, arrival time for live ones. */
+  at: number;
+};
+
 type Listener = (e: SweepEvent) => void;
 
 /** Roughly a day before the 5 Sep 2026 deploy. setFees landed at 55654464. */
@@ -37,6 +46,7 @@ const POLL_MS = 15_000;
 let started = false;
 let total = 0;
 let totalIsComplete = false;
+let last: LastSweep | null = null;
 const listeners = new Set<Listener>();
 const totalListeners = new Set<() => void>();
 
@@ -50,6 +60,9 @@ export function onTotal(fn: () => void): () => void {
 }
 export function getTotal(): { total: number; complete: boolean } {
   return { total, complete: totalIsComplete };
+}
+export function getLast(): LastSweep | null {
+  return last;
 }
 
 export function startFeed(client: PublicClient) {
@@ -84,6 +97,29 @@ async function run(client: PublicClient) {
     total = logs.reduce((n, l) => n + Number(l.args.legsFilled ?? 0n), 0);
     cursor = latest + 1n;
     for (const l of totalListeners) l();
+
+    // The most recent sweep, for the "last:" line under the counter. Two
+    // light calls (a block and a tx) plus one multicall; nothing heavy,
+    // and nothing here is another eth_getLogs (see the RPC note in
+    // claude/dustsweep-decisions.md, 6 Sep: two overlapping getLogs
+    // calls get one of them rejected).
+    const tail = logs[logs.length - 1];
+    if (tail) {
+      try {
+        const block = await client.getBlock({ blockNumber: tail.blockNumber });
+        const symbols = await symbolsFor(client, tail.transactionHash);
+        last = {
+          txHash: tail.transactionHash,
+          symbols,
+          legsFilled: Number(tail.args.legsFilled ?? 0n),
+          userOutWei: tail.args.userOut ?? 0n,
+          at: Number(block.timestamp) * 1000,
+        };
+        for (const l of totalListeners) l();
+      } catch {
+        // decoration; leave it blank
+      }
+    }
   } catch {
     return; // RPC unreachable; stay ambient.
   }
@@ -114,6 +150,14 @@ async function run(client: PublicClient) {
           userOutWei: log.args.userOut ?? 0n,
           symbols,
         };
+        last = {
+          txHash: ev.txHash,
+          symbols,
+          legsFilled: filled,
+          userOutWei: ev.userOutWei,
+          at: Date.now(),
+        };
+        for (const l of totalListeners) l();
         for (const l of listeners) l(ev);
       }
     } catch {

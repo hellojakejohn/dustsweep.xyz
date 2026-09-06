@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePublicClient } from 'wagmi';
-import { getTotal, onSweep, onTotal, startFeed, type SweepEvent } from '../lib/feed';
+import {
+  getLast,
+  getTotal,
+  onSweep,
+  onTotal,
+  startFeed,
+  type LastSweep,
+  type SweepEvent,
+} from '../lib/feed';
+import { formatEthTrim } from '../lib/format';
 import { useBusy } from '../lib/mood';
 import {
   FIGURE_H,
@@ -106,11 +115,15 @@ function LiveScene() {
 
   const rootRef = useRef<HTMLDivElement>(null);
   const [total, setTotal] = useState(getTotal());
+  const [last, setLast] = useState(getLast());
 
   // Live feed. Starts once per page, survives re-renders.
   useEffect(() => {
     if (client) startFeed(client);
-    return onTotal(() => setTotal(getTotal()));
+    return onTotal(() => {
+      setTotal(getTotal());
+      setLast(getLast());
+    });
   }, [client]);
 
   // The engine. Built once; reads busy through the ref.
@@ -128,26 +141,94 @@ function LiveScene() {
   return (
     <>
       <div ref={rootRef} className="absolute inset-0 touch-manipulation" />
-      <Counter total={total.total} complete={total.complete} />
+      <Counter total={total.total} complete={total.complete} last={last} />
     </>
   );
 }
 
-function Counter({ total, complete }: { total: number; complete: boolean }) {
+function Counter({
+  total,
+  complete,
+  last,
+}: {
+  total: number;
+  complete: boolean;
+  last: LastSweep | null;
+}) {
+  // Re-render every 30s so "4m ago" keeps moving without a feed event.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
   if (total === 0 && !complete) return null;
   return (
     <div className="pointer-events-none absolute right-4 top-3 text-right sm:right-6 sm:top-4">
       <p className="num text-[18px] font-semibold leading-none text-tan sm:text-[22px]">
-        {total.toLocaleString()}
+        <Odometer value={total} />
       </p>
       <p className="mt-1 text-[10.5px] leading-snug text-faint">
         dead {total === 1 ? 'token' : 'tokens'} swept
         {complete ? ' since launch' : ' lately'}
         {total === 0 ? '. Yet.' : ''}
       </p>
+      {last && (
+        <p className="num mt-1.5 text-[10px] leading-snug text-faint/80">
+          last: <span className="text-muted">{lastSymbols(last)}</span>
+          {' · '}
+          {formatEthTrim(last.userOutWei)} ETH
+          {' · '}
+          {ago(last.at)}
+        </p>
+      )}
     </div>
   );
 }
+
+/** "TOAD" / "TOAD +2" / "2 tokens" when the calldata could not be read. */
+function lastSymbols(l: LastSweep): string {
+  const [first, ...rest] = l.symbols.filter((x) => x && x !== '?');
+  if (!first) return `${l.legsFilled} ${l.legsFilled === 1 ? 'token' : 'tokens'}`;
+  return rest.length ? `${first} +${rest.length}` : first;
+}
+
+function ago(ms: number): string {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
+
+/**
+ * Gas-pump digits. Each digit is a 10-tall column that slides to the
+ * right number, so a live sweep rolls the counter instead of blinking
+ * it. Keyed from the right so a new leading digit does not reshuffle
+ * the ones already showing. Static under reduced motion (CSS).
+ */
+function Odometer({ value }: { value: number }) {
+  const chars = [...value.toLocaleString()];
+  return (
+    <span className="odo" aria-label={value.toLocaleString()}>
+      {chars.map((ch, i) => {
+        const key = chars.length - i;
+        if (!/\d/.test(ch)) return <span key={key}>{ch}</span>;
+        return (
+          <span key={key} className="odo-digit">
+            <span className="odo-col" style={{ transform: `translateY(-${Number(ch) * 10}%)` }}>
+              {DIGITS.map((d) => (
+                <span key={d}>{d}</span>
+              ))}
+            </span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 /* ---------- engine -------------------------------------------------- */
 

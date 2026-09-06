@@ -454,8 +454,8 @@ function Disconnected() {
         Sell every dead token in your wallet. One signature.
       </h2>
       <p className="mt-2 text-[13px] leading-relaxed text-muted">
-        dustsweep finds the dead tokens you are stuck holding and sells the ones still worth
-        something, for ETH.
+        dustsweep finds the dead tokens in your wallet and sells the ones it still can, for
+        ETH.
       </p>
 
       {/* How it works, in the fewest words that stay true. "for ETH" is
@@ -597,15 +597,8 @@ function Progress({
           quote. Pure CSS; the numbers above are the honest readout. */}
       <div className="sweep-track mt-6" aria-hidden="true">
         <div className="sweep-clean" style={{ width: `${edge}%` }} />
-        <div className="sweep-broom" style={{ left: `${edge}%` }}>
-          <svg viewBox="0 0 24 24" width="30" height="30" fill="none">
-            <path d="M15.5 2.5 9.8 12.4" stroke="#8a5a2b" strokeWidth="1.8" strokeLinecap="round" />
-            <path
-              d="M5.2 21.5c.3-4.2 2-7.4 4.6-9.6l3.6 2.1c-.6 3.4-2.4 6.2-5.3 8.1-1 .3-2 .1-2.9-.6Z"
-              fill="#d8b377"
-            />
-            <path d="M8.6 14.3 6.9 20.6M10.8 15.6 9.9 20.3" stroke="#8a5a2b" strokeWidth=".8" strokeLinecap="round" />
-          </svg>
+        <div className={`sweep-broom${listing ? ' is-pacing' : ''}`} style={{ left: `${edge}%` }}>
+          <span className="inline-block -scale-x-100 text-[22px] leading-none">🧹</span>
         </div>
       </div>
     </div>
