@@ -1,47 +1,42 @@
 # Janitor frames
 
-Drop the SVGs here. Naming matters more than the count -- predictable
-names mean the animation code can just loop over them.
+PNG, transparent, one character per file. List them in `WALK_FRAMES` and
+`SWEEP_FRAMES` at the top of `src/components/JanitorStage.tsx`. With one
+walk frame he glides with a CSS bob; with two or more he walks.
 
 ```
-walk-1.svg   walk-2.svg   walk-3.svg   walk-4.svg
-sweep-1.svg  sweep-2.svg  sweep-3.svg
-turn-1.svg   turn-2.svg
-idle.svg
+walk-1.png  walk-2.png  walk-3.png  walk-4.png     (left foot, pass, right foot, pass)
+sweep-1.png sweep-2.png sweep-3.png                 (broom back, mid, through)
 ```
 
-Fewer is fine. Two walk frames and two sweep frames already animate. Add
-more later and the code picks them up.
+Four walk frames and three sweep frames is plenty. Two of each already
+reads as motion.
 
 ## The one rule that matters
 
-**Every frame must be the same canvas size with the janitor's feet on the
-same line.** Same viewBox, same width and height, feet at the same Y.
+**Every frame is the same canvas size with his feet on the same line.**
+If the canvas or the foot line shifts between frames he jitters when the
+frames swap and no code fixes it. Generate each frame on the same
+background, then crop them all to one identical box.
 
-If the canvas shifts between frames he jitters and bobs when the frames
-swap, and no amount of code fixes it. In Figma or Illustrator: draw every
-frame inside one identical artboard, do not crop to content on export.
-
-Only his legs, arms and broom should move between frames. Everything else
-stays put.
+`docs/reference/frames.py` does the crop: point it at a folder of
+generated PNGs, it removes the background, finds the lowest opaque pixel
+in each, aligns every frame to that foot line, pads to one shared canvas,
+and writes them here. Run it after every batch.
 
 ## Direction
 
-Draw him facing **one** direction only, whichever is natural. The code
-flips him with `scaleX(-1)` when he turns around, so a mirrored set is
-wasted work.
+Draw him facing **one** direction, the same one as `janitor-solo.png`
+(broom on the viewer's left). The code flips him with `scaleX(-1)`.
 
-## Export settings
+## Generation prompt that has worked
 
-- SVG, not PNG. Scales cleanly and is a fraction of the size.
-- No background rectangle. Transparent.
-- Outline the text if any frame has any. There is no font here to load.
-- Keep the existing palette: teal coveralls, warm orange skin, brown
-  broom handle. Sampled from the original art and already in `index.css`.
+Same character as the reference image, flat vector illustration, plain
+solid background (#00ff00 works for keying), full body, feet on the
+ground, deadpan face, teal coveralls, dark cap, straw broom with brown
+handle. Then per frame: "mid-stride, left foot forward, broom held
+upright at his side" / "right foot forward" / "broom swept back behind
+him, about to sweep" / "broom swung forward through the floor".
 
-## What happens once they land
-
-A `steps()` animation cycles the frames while a transform slides him
-along the bottom, `scaleX(-1)` flips him at each end, and the coin
-animation in `docs/reference/janitor-loop.html` already handles the pile.
-Roughly fifteen lines of CSS. Nothing needs a library.
+Keep the palette. Keep the face. If the model gives him a smile or
+motion lines, regenerate.

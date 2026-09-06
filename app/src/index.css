@@ -49,3 +49,105 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.015em;
 }
+
+/* ------------------------------------------------------------------
+ * The janitor stage. See components/JanitorStage.tsx.
+ * Only transform and opacity animate. `--floor` is where the coins land
+ * and where his feet are; the stage is taller than that so a falling
+ * coin has somewhere to fall from.
+ * ------------------------------------------------------------------ */
+@layer components {
+  .janitor-stage {
+    --floor: 22px;
+    --janitor-h: 118px;
+    height: 150px;
+  }
+  @media (min-width: 640px) {
+    .janitor-stage {
+      --floor: 28px;
+      --janitor-h: 168px;
+      height: 210px;
+    }
+  }
+
+  .janitor-stage .floor {
+    bottom: var(--floor);
+  }
+
+  .janitor-walk {
+    bottom: calc(var(--floor) - 4px);
+    transform: translateX(-50%);
+    will-change: left;
+    z-index: 4;
+  }
+  .janitor-img {
+    height: var(--janitor-h);
+    transform-origin: 50% 100%;
+    transition: transform 220ms ease;
+  }
+  .janitor-bob {
+    transform-origin: 50% 100%;
+    animation: janitor-bob 0.62s ease-in-out infinite alternate;
+  }
+  @keyframes janitor-bob {
+    from {
+      transform: translateY(0) rotate(-1.4deg);
+    }
+    to {
+      transform: translateY(-3px) rotate(1.6deg);
+    }
+  }
+
+  .coin {
+    position: absolute;
+    bottom: calc(var(--floor) - 2px + var(--lift, 0px));
+    border-radius: 50%;
+    box-shadow:
+      inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    will-change: transform, opacity;
+    z-index: 2;
+  }
+  .coin-falling {
+    animation: coin-fall 1.15s cubic-bezier(0.3, 0, 0.85, 1) both;
+  }
+  @keyframes coin-fall {
+    0% {
+      transform: translateY(-190px) scale(0.85);
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    78% {
+      transform: translateY(0) scale(1);
+    }
+    88% {
+      transform: translateY(-6px) scale(1);
+    }
+    100% {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+  }
+  .coin-resting {
+    opacity: 1;
+  }
+  .coin-swept {
+    animation: coin-swept 0.7s cubic-bezier(0.2, 0.6, 0.4, 1) both;
+  }
+  @keyframes coin-swept {
+    0% {
+      transform: translate(0, 0) rotate(0);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(calc(var(--dir, 1) * 140px), -34px)
+        rotate(calc(var(--dir, 1) * 420deg));
+      opacity: 0;
+    }
+  }
+  .coin-still {
+    animation: none;
+  }
+}

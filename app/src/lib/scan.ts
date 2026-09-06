@@ -5,11 +5,16 @@ import { probeWillMove } from './willmove';
 import type { HeldToken } from './blockscout';
 
 /**
- * Gas for one token's swap leg inside a batch. ~180k measured on 4663.
+ * Gas for one token's swap leg inside a batch. 180k was the fork
+ * measurement; the first real mainnet sweep (5 Sep 2026, 2 legs) came in
+ * ~26% above that once the batch overhead was spread across the legs, so
+ * this errs high on purpose. A too-low number shows the visitor a gas
+ * figure smaller than the one their wallet will, and this tool's only
+ * asset is that its numbers hold up.
  * The gas PRICE is read live every scan -- it is not hardcoded, because
  * the number that decides which pile a token lands in has to be current.
  */
-export const GAS_PER_LEG = 180_000n;
+export const GAS_PER_LEG = 230_000n;
 
 /**
  * Haircut applied to the quote before it is compared against gas cost.

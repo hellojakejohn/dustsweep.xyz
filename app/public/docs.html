@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dustsweep -- where the money goes</title>
+<meta name="description" content="How dustsweep.xyz charges, where the fee lands, and what $SWEEP has to do with any of it. Every number here is readable on-chain.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext x='16' y='25' font-size='24' text-anchor='middle'%3E%F0%9F%A7%B9%3C/text%3E%3C/svg%3E">
+<meta property="og:title" content="dustsweep -- where the money goes">
+<meta property="og:image" content="https://dustsweep.xyz/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root{--page:#0a0a0b;--card:#131315;--cream:#f0e4cc;--muted:#a39b8b;--faint:#8e8778;--orange:#e49054;--tan:#d8b377;--teal:#304854}
+  *{box-sizing:border-box}
+  html{background:var(--page);color-scheme:dark}
+  body{margin:0;background:var(--page);color:var(--cream);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:600px;margin:0 auto;padding:16px 16px 80px}
+  header{display:flex;align-items:center;gap:10px;padding:8px 0 40px}
+  header img{height:44px;width:auto}
+  header a{color:var(--cream);text-decoration:none;font-weight:600;font-size:19px;letter-spacing:-.01em}
+  header a span{color:var(--faint)}
+  h1{font-size:26px;letter-spacing:-.02em;margin:0 0 6px}
+  .sub{color:var(--muted);margin:0 0 32px}
+  h2{font-size:15px;margin:36px 0 8px;color:var(--cream)}
+  p{margin:0 0 12px;color:var(--muted)}
+  a{color:var(--cream);text-decoration:underline;text-decoration-color:var(--faint);text-underline-offset:2px}
+  a:hover{text-decoration-color:var(--cream)}
+  code,.num{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:.92em;color:var(--tan);word-break:break-all}
+  .box{border:1px solid var(--teal);background:var(--card);border-radius:14px;padding:18px 20px;margin:20px 0}
+  .box p:last-child{margin:0}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+  .split div{border:1px solid var(--teal);border-radius:10px;padding:12px 14px}
+  .split b{display:block;font-family:ui-monospace,Menlo,monospace;font-size:22px;color:var(--tan);font-weight:600;margin-bottom:4px}
+  .split small{color:var(--faint);font-size:12px;line-height:1.4}
+  .warn{color:var(--cream)}
+  footer{margin-top:48px;color:var(--faint);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="/janitor-mark.png" alt="">
+    <a href="/">dustsweep<span>.xyz</span></a>
+  </header>
+
+  <h1>Where the money goes</h1>
+  <p class="sub">Every number on this page is readable on-chain. If one of them stops being true, the contract is wrong, not the page.</p>
+
+  <h2>What you pay</h2>
+  <p>You sell your dust for ETH. The contract keeps <span class="num">5%</span> of what it sold for. That is <code>MAX_FEE_BPS</code>, a hardcoded ceiling, so the fee cannot be raised above it by anyone, including us. It can be lowered.</p>
+  <p>Gas is yours. It comes out of your ETH balance, not out of the proceeds, and the site shows you the estimate before you sign. Each token also needs a one-off approval the first time you sweep it. Quotes carry a 3% haircut before they are compared to gas, so a token that only barely clears is left in the wallet rather than sold at a loss.</p>
+
+  <h2>Where the 5% lands</h2>
+  <div class="box">
+    <p>Right now, all of it goes to the dev wallet:</p>
+    <p><a class="num" href="https://robinhoodchain.blockscout.com/address/0x5dCD1D1DD0F797a24Cc509fDd0Df9e8747bBD01b" target="_blank" rel="noreferrer">0x5dCD1D1DD0F797a24Cc509fDd0Df9e8747bBD01b</a></p>
+    <p>That is a hardware wallet. It is also the contract owner. Owner can change fees (down to zero, up to 5%), register or remove swap adapters, and set the payout token. Owner cannot touch your tokens: the contract never holds a balance and every approval is exact-amount, per sweep.</p>
+  </div>
+  <p>Once <span class="num">$SWEEP</span> exists and a buyback contract is live, the split becomes:</p>
+  <div class="split">
+    <div><b>2.5%</b><small>buys $SWEEP on-chain and burns it. Automated, visible, no discretion.</small></div>
+    <div><b>2.5%</b><small>pays the dev. One person, building in public.</small></div>
+  </div>
+  <p>Until that contract is deployed and this page says so, the honest description is the one above: 100% dev. We would rather write that than promise a split that is not wired yet.</p>
+
+  <h2>What $SWEEP has to do with it</h2>
+  <p>$SWEEP is the companion token, launched on the Pons launchpad on Robinhood Chain. Pons pays the creator of a token <span class="num">70%</span> of a <span class="num">1%</span> fee on every trade of that token, for as long as it trades. That stream goes 100% to the dev.</p>
+  <p>So, plainly: the sweeper is not the business. The sweeper is the reason anyone hears about the token, and the token's trading volume is what pays for the sweeper to exist. You are welcome to use the tool and never touch the token.</p>
+  <p>Paying out in $SWEEP instead of ETH is a feature the contract supports but the site does not offer yet. It turns on once the pool has real depth and the path has been tested against it.</p>
+
+  <h2>What we do not do</h2>
+  <p>No custody. Your tokens go from your wallet through the contract to a pool in one transaction, and the ETH comes back to you in the same one. No address logging, no analytics on who connected. No token gets sold that you did not tick.</p>
+  <p class="warn">Unaudited. The contract source is public at <a href="https://github.com/hellojakejohn/dustsweep.xyz" target="_blank" rel="noreferrer">github.com/hellojakejohn/dustsweep.xyz</a> and it interacts with arbitrary tokens, some of which are hostile by design. It has been fork-tested against real dead tokens, run through static analysis (Aderyn), and used on the dev's own wallet first. That is not the same as an audit. Read it, or sweep an amount you would not miss.</p>
+
+  <h2>Verified addresses</h2>
+  <p>Sweeper <a class="num" href="https://robinhoodchain.blockscout.com/address/0x3b0AD85011d082C29C76F75F4aAf4674Dd416Cc2" target="_blank" rel="noreferrer">0x3b0AD85011d082C29C76F75F4aAf4674Dd416Cc2</a></p>
+  <p>V3Adapter <a class="num" href="https://robinhoodchain.blockscout.com/address/0x6B900fDF5B3C65bafb2A5Bff7624C6DB7dA05AA1" target="_blank" rel="noreferrer">0x6B900fDF5B3C65bafb2A5Bff7624C6DB7dA05AA1</a></p>
+  <p>Both verified on Sourcify and Blockscout. Chain ID 4663.</p>
+
+  <footer>Two launchpads shipped ~63,000 tokens onto this chain, then turned off their front ends. Somebody has to sweep. <a href="/">Back to the broom.</a></footer>
+</div>
+</body>
+</html>

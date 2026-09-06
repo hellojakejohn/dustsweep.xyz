@@ -13,6 +13,7 @@ import {
 import { defaultSelection, DEFAULT_SELECT_GAS_MULTIPLE } from '../lib/selection';
 import { useSweep } from '../hooks/useSweep';
 import { useSweeperFee } from '../hooks/useSweeperFee';
+import { setBusy } from '../lib/mood';
 import { ConnectButton } from './Connect';
 import { Section } from './Section';
 import { SweepFlow } from './SweepFlow';
@@ -153,6 +154,13 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
 
   const scanning = scan.phase === 'listing' || scan.phase === 'quoting';
   const hasRows = scan.tokens.length > 0;
+
+  // Tells the janitor to hurry up. Decoration only; nothing reads it back.
+  const working = scanning || (locked && sweep.stage !== 'done');
+  useEffect(() => {
+    setBusy(working);
+    return () => setBusy(false);
+  }, [working]);
 
   useEffect(() => {
     if (!isConnected) return onStatus('');
@@ -434,6 +442,14 @@ const STATS = [
   { value: '1', label: 'signature to clear yours' },
 ];
 
+const HOW = [
+  { title: 'Connect', body: 'Read-only until you say otherwise.' },
+  { title: 'We price everything', body: 'Every token, against a live pool, three fee tiers.' },
+  {
+    title: 'One signature',
+    body: 'Sells the lot for ETH. $SWEEP payout comes once its pool has depth.',
+  },
+];
 const LEGEND: { pile: Pile; title: string; body: string }[] = [
   { pile: 'sweepable', title: 'Worth sweeping', body: 'the quote clears the gas to sell it' },
   {
@@ -463,6 +479,21 @@ function Disconnected() {
         ))}
       </dl>
 
+      {/* How it works, in the fewest words that stay true. "for ETH" is
+          deliberate: the contract can pay out in $SWEEP but that path is
+          not switched on, so the site does not offer it. Add the option
+          here only once setPayout has been called and the flow has been
+          fork-tested and re-run through Gate 2. */}
+      <ol className="mt-5 grid grid-cols-3 gap-3 border-t border-teal pt-4">
+        {HOW.map((h, i) => (
+          <li key={h.title} className="flex flex-col gap-1">
+            <span className="num text-[11px] text-orange">{i + 1}</span>
+            <span className="text-[12px] font-medium leading-snug text-cream">{h.title}</span>
+            <span className="text-[10.5px] leading-snug text-faint">{h.body}</span>
+          </li>
+        ))}
+      </ol>
+
       <ul className="mt-5 space-y-1.5 border-t border-teal pt-4">
         {LEGEND.map((l) => (
           <li key={l.pile} className="flex items-baseline gap-2 text-[11.5px]">
@@ -486,12 +517,6 @@ function Disconnected() {
         first time you sweep it, so a fresh wallet pays those first, then signs once, then
         sends one transaction.
       </p>
-
-      <img
-        src="/janitor-full.png"
-        alt=""
-        className="mt-4 h-[120px] w-full object-contain"
-      />
 
       <div className="mt-4">
         <ConnectButton full />

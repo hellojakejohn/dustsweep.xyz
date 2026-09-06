@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { explorerTx } from '../lib/chain';
+import { FIXTURE_IS_ON } from '../lib/fixture';
 import { formatEth, formatEthTrim, formatTokenAmount, shortAddress } from '../lib/format';
 import type { SweepReceipt } from '../lib/sweeper';
 import type { ScannedToken } from '../lib/scan';
@@ -125,14 +126,19 @@ export function Receipt({
           </div>
         )}
 
-        <a
-          href={explorerTx(receipt.hash)}
-          target="_blank"
-          rel="noreferrer"
-          className="num mt-3 inline-block text-[11px] text-muted underline decoration-teal underline-offset-2 transition-colors hover:text-cream"
-        >
-          {shortAddress(receipt.hash)} on Blockscout
-        </a>
+        {/* A fixture sweep's hash does not exist on Blockscout, and a
+            link that 404s under the word "Blockscout" is exactly the kind
+            of thing this screen exists to never do. */}
+        {!FIXTURE_IS_ON && (
+          <a
+            href={explorerTx(receipt.hash)}
+            target="_blank"
+            rel="noreferrer"
+            className="num mt-3 inline-block text-[11px] text-muted underline decoration-teal underline-offset-2 transition-colors hover:text-cream"
+          >
+            {shortAddress(receipt.hash)} on Blockscout
+          </a>
+        )}
       </div>
 
       <Share receipt={receipt} />

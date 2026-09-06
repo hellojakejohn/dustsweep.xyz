@@ -65,7 +65,18 @@ Deploy txs:
 V3Adapter   0xf29aa7862d97e3a3f3a91954da2d5ca7a2dc7b92f4b0e25d52a65d6b04bbdbf7
 Sweeper     0xaa6bb678857e5d6509a596a7f43b2ced2c38b73cb7de602a7012f72ed996cd05
 setAdapter  0x671dbb1935b8df61c34b7fb106fe5e142138cb264e05b1481ef304222d2fdc3b
+setFees     0x335810f3f87b7ec0b92764fdd70b8be274a1313e7a15bc870f4a09566a5b432d  block 55654464
 ```
+
+**Live fees: `setFees(500, 300)` from the Ledger, 5 Sep 2026 (late).**
+Readback `feeBpsNative` 500, `feeBpsPayout` 300. 5% is `MAX_FEE_BPS`,
+the hardcoded ceiling, so "cannot go higher" is a true statement. The
+`feeBpsNative = 300` in `src/Sweeper.sol` is the constructor default
+only; the deployed contract's storage says 500. The tx emitted
+`FeesSet(uint256,uint256)`, topic
+`0x93525d3c7f4fafe56faedbca6d501a13c63f47857d8b30d8282ec2dd806259a7`,
+matches `cast keccak` of the source signature. Rationale and split intent
+in `claude/dustsweep-decisions.md`, entry 2026-09-05 (late).
 
 Both contracts verified on Sourcify (exact_match) and show as verified on
 robinhoodchain.blockscout.com. The app only needs the Sweeper address; it
@@ -606,6 +617,14 @@ Do not cut it.
    with arbitrary hostile ERC20s. The honest framing is: non-custodial,
    exact-amount approvals, public source, unaudited. That is a better
    pitch than a safety claim.
+   **The fee disclosure ships next to it, every time:** the Sweeper
+   keeps 5% of what the dust sold for, the contract cannot go higher,
+   gas is the user's. Right now 100% of the 5% lands in the Ledger fee
+   sink `0x5dCD1D1DD0F797a24Cc509fDd0Df9e8747bBD01b` (dev). Once SWEEP
+   exists and `BuybackBurner` runs, the intent is 2.5% buy-and-burn
+   SWEEP / 2.5% dev. Disclose the Pons creator fee stream alongside:
+   70% of Pons' 1% trade fee on SWEEP goes 100% to dev. Site copy in
+   `claude/dustsweep-decisions.md`, 2026-09-05 (late).
 2. **These never get cut for schedule:** fork tests against real dead
    tokens, `slither .`, `aderyn .`, sweeping Jake's own wallet first, the
    receipt/share card, the unaudited disclosure.
@@ -710,7 +729,9 @@ anyone can call `burn()`, 1-hour cooldown, requires `minOut != 0`.
 `BuybackBurner` genuinely cannot be rugged. **`Sweeper` is
 owner-controlled and must not be described as trustless.** The owner can
 whitelist adapters, change fees up to the 5% cap, redirect the fee sink,
-raise the value ceiling, and set the payout target.
+raise the value ceiling, and set the payout target. Fees already sit at
+the cap (`setFees(500, 300)`, 5 Sep late), so the only fee move left to
+the owner is down.
 
 What bounds it: the Sweeper holds no custody, so there is no treasury to
 drain. The worst case from a compromised owner key is tokens stolen in
