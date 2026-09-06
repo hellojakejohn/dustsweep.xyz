@@ -52,15 +52,16 @@
 
 /* ------------------------------------------------------------------
  * The janitor stage. See components/JanitorStage.tsx.
- * Only transform and opacity animate. `--floor` is where the coins land
- * and where his feet are; the stage is taller than that so a falling
- * coin has somewhere to fall from.
+ * Positions are written per frame as transforms by the engine; the CSS
+ * here is shape, colour and the few one-shot animations (puff, tag,
+ * bubble). `--floor` is where the coins land and where his feet are.
  * ------------------------------------------------------------------ */
 @layer components {
   .janitor-stage {
     --floor: 22px;
     --janitor-h: 118px;
     height: 150px;
+    cursor: crosshair;
   }
   @media (min-width: 640px) {
     .janitor-stage {
@@ -69,38 +70,65 @@
       height: 210px;
     }
   }
-
   .janitor-stage .floor {
     bottom: var(--floor);
   }
 
   .janitor-walk {
-    bottom: calc(var(--floor) - 4px);
-    transform: translateX(-50%);
-    will-change: left;
+    will-change: transform;
     z-index: 4;
+    pointer-events: none;
   }
   .janitor-img {
     height: var(--janitor-h);
     transform-origin: 50% 100%;
-    transition: transform 220ms ease;
+    transition: transform 180ms ease;
   }
-  .janitor-bob {
-    transform-origin: 50% 100%;
-    animation: janitor-bob 0.62s ease-in-out infinite alternate;
+
+  .janitor-canvas {
+    pointer-events: none;
+    z-index: 4;
   }
-  @keyframes janitor-bob {
+  .janitor-bubble {
+    position: absolute;
+    z-index: 6;
+    white-space: nowrap;
+    padding: 5px 9px;
+    border-radius: 8px;
+    border: 1px solid var(--color-teal);
+    background: var(--color-card);
+    color: var(--color-muted);
+    font-size: 11.5px;
+    line-height: 1.2;
+    animation: bubble-in 220ms ease-out both;
+  }
+  .janitor-bubble::after {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: 10px;
+    width: 8px;
+    height: 8px;
+    transform: rotate(45deg);
+    background: var(--color-card);
+    border-left: 1px solid var(--color-teal);
+    border-bottom: 1px solid var(--color-teal);
+  }
+  @keyframes bubble-in {
     from {
-      transform: translateY(0) rotate(-1.4deg);
+      opacity: 0;
+      transform: translateX(-6px);
     }
     to {
-      transform: translateY(-3px) rotate(1.6deg);
+      opacity: 1;
+      transform: translateX(0);
     }
   }
 
   .coin {
     position: absolute;
-    bottom: calc(var(--floor) - 2px + var(--lift, 0px));
+    left: 0;
+    top: 0;
     border-radius: 50%;
     box-shadow:
       inset 0 -1px 0 rgba(0, 0, 0, 0.3),
@@ -108,46 +136,49 @@
     will-change: transform, opacity;
     z-index: 2;
   }
-  .coin-falling {
-    animation: coin-fall 1.15s cubic-bezier(0.3, 0, 0.85, 1) both;
-  }
-  @keyframes coin-fall {
-    0% {
-      transform: translateY(-190px) scale(0.85);
-      opacity: 0;
-    }
-    12% {
-      opacity: 1;
-    }
-    78% {
-      transform: translateY(0) scale(1);
-    }
-    88% {
-      transform: translateY(-6px) scale(1);
-    }
-    100% {
-      transform: translateY(0) scale(1);
-      opacity: 1;
-    }
-  }
-  .coin-resting {
-    opacity: 1;
-  }
-  .coin-swept {
-    animation: coin-swept 0.7s cubic-bezier(0.2, 0.6, 0.4, 1) both;
-  }
-  @keyframes coin-swept {
-    0% {
-      transform: translate(0, 0) rotate(0);
-      opacity: 1;
-    }
-    100% {
-      transform: translate(calc(var(--dir, 1) * 140px), -34px)
-        rotate(calc(var(--dir, 1) * 420deg));
-      opacity: 0;
-    }
-  }
   .coin-still {
-    animation: none;
+    bottom: calc(var(--floor) - 2px);
+    top: auto;
+  }
+  .coin-tag {
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    transform: translate(-50%, -4px);
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.02em;
+    color: var(--color-cream);
+    background: color-mix(in oklab, var(--color-page) 80%, transparent);
+    padding: 1px 4px;
+    border-radius: 3px;
+    white-space: nowrap;
+    pointer-events: none;
+    transition: opacity 600ms ease;
+  }
+  .coin-tag.is-gone {
+    opacity: 0;
+  }
+
+  .puff {
+    position: absolute;
+    width: 26px;
+    height: 12px;
+    margin-left: -13px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(240, 228, 204, 0.35), rgba(240, 228, 204, 0) 70%);
+    pointer-events: none;
+    z-index: 3;
+    animation: puff 420ms ease-out both;
+  }
+  @keyframes puff {
+    from {
+      opacity: 0.9;
+      transform: translateY(0) scale(0.6);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-14px) scale(1.9);
+    }
   }
 }

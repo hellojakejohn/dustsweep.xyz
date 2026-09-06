@@ -76,7 +76,7 @@ export function App() {
           >
             Source is public
           </a>
-          . We keep 5% of what your dust sells for, capped in the contract. Gas is yours.{' '}
+          . We keep 5% of what your dust sells for, capped in the contract. The gas is on you.{' '}
           <a
             href="/docs.html"
             className="text-cream underline decoration-muted underline-offset-2 transition-colors hover:decoration-cream"
