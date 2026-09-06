@@ -6,13 +6,13 @@ import { formatEth, formatEthTrim } from '../lib/format';
 import {
   NOT_DUST_CEILING_WEI,
   QUOTE_HAIRCUT_BPS,
-  SWEEP_FEE_BPS,
   totalsFor,
   type Pile,
   type ScannedToken,
 } from '../lib/scan';
 import { defaultSelection, DEFAULT_SELECT_GAS_MULTIPLE } from '../lib/selection';
 import { useSweep } from '../hooks/useSweep';
+import { useSweeperFee } from '../hooks/useSweeperFee';
 import { ConnectButton } from './Connect';
 import { Section } from './Section';
 import { SweepFlow } from './SweepFlow';
@@ -131,7 +131,9 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
     () => scan.tokens.filter((t) => selected.has(t.address)),
     [scan.tokens, selected],
   );
-  const totals = totalsFor(selectedTokens, scan.gasCostPerLegWei);
+  // Live `feeBpsNative`, not a constant. Null until the read lands.
+  const feeBps = useSweeperFee();
+  const totals = totalsFor(selectedTokens, scan.gasCostPerLegWei, feeBps);
 
   // Owned here rather than inside SweepFlow: once a sweep is in flight
   // the checkboxes have to lock, or the batch being signed and the batch
@@ -251,6 +253,7 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
 
               <SweepFlow
                 sweep={sweep}
+                feeBps={feeBps}
                 selected={selectedTokens}
                 allTokens={scan.tokens}
                 gasCostPerLegWei={scan.gasCostPerLegWei}
@@ -358,7 +361,10 @@ function Totals({
   totals: ReturnType<typeof totalsFor>;
   dangerCount: number;
 }) {
-  const feePct = Number(SWEEP_FEE_BPS) / 100;
+  // Both the label and the amount come off the chain. While the read is
+  // in flight there is no number to show, so neither line gets one.
+  const { fee, receive, feeBps } = totals;
+  const feeLabel = feeBps === null ? 'Fee (loading)' : `Fee ${Number(feeBps) / 100}%`;
 
   return (
     <div className="mt-3 border-t border-teal pt-4">
@@ -366,15 +372,17 @@ function Totals({
         <Line label="Selected" value={`${totals.count} tokens`} />
         <Line label="Gross" value={`${formatEth(totals.gross)} ETH`} />
         <Line label="Gas (est)" value={`${formatEth(totals.gas)} ETH`} negative />
-        <Line label={`Fee ${feePct}%`} value={`${formatEth(totals.fee)} ETH`} negative />
+        <Line label={feeLabel} value={fee === null ? '\u2026' : `${formatEth(fee)} ETH`} negative />
         <div className="!mt-2.5 border-t border-teal pt-2.5">
           <Line
             label="You receive"
-            value={`${totals.receive < 0n ? '-' : ''}${formatEth(
-              totals.receive < 0n ? -totals.receive : totals.receive,
-            )} ETH`}
+            value={
+              receive === null
+                ? '\u2026'
+                : `${receive < 0n ? '-' : ''}${formatEth(receive < 0n ? -receive : receive)} ETH`
+            }
             strong
-            bad={totals.receive <= 0n && totals.count > 0}
+            bad={receive !== null && receive <= 0n && totals.count > 0}
           />
         </div>
       </dl>

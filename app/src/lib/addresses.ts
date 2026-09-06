@@ -203,10 +203,10 @@ export function requireSweeper(): `0x${string}` {
  * so the write half needs this address as much as it needs the Sweeper's,
  * and `Sweeper.sweep` reverts `AdapterNotAllowed` if it is wrong.
  *
- * Same rules as above: empty until the real deploy, env override wins,
+ * Deployed 5 Sep 2026, verified on Blockscout. Env override wins,
  * a deployed address is public by construction.
  */
-const V3_ADAPTER_DEPLOYED: string = '';
+const V3_ADAPTER_DEPLOYED: string = '0x6B900fDF5B3C65bafb2A5Bff7624C6DB7dA05AA1';
 
 const adapterRaw = import.meta.env.VITE_V3_ADAPTER?.trim() || V3_ADAPTER_DEPLOYED;
 

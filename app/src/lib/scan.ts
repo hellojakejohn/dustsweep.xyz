@@ -21,13 +21,6 @@ export const GAS_PER_LEG = 180_000n;
 export const QUOTE_HAIRCUT_BPS = 300n;
 
 /**
- * `Sweeper.feeBpsNative`, read from src/Sweeper.sol. The contract takes
- * this off the gross WETH before paying out in ETH. Kept in sync by
- * hand for now; when the ABI lands, read it from the deployment.
- */
-export const SWEEP_FEE_BPS = 300n;
-
-/**
  * A holding worth more than this is not dust, whatever the pools say.
  *
  * Raised from 0.01 to 0.1 ETH on Jake's call. At 0.01 the ceiling held
@@ -460,11 +453,23 @@ function assemble(
   return out;
 }
 
-/** What the user would actually walk away with, given a selection. */
-export function totalsFor(selected: ScannedToken[], gasCostPerLegWei: bigint) {
+/**
+ * What the user would actually walk away with, given a selection.
+ *
+ * `feeBps` is `Sweeper.feeBpsNative` read off the deployment (see
+ * hooks/useSweeperFee.ts), never a constant. Until that read returns it
+ * is `null`, and so are `fee` and `receive`: showing a number the
+ * contract has not confirmed is exactly the lie this tool exists not to
+ * tell.
+ */
+export function totalsFor(
+  selected: ScannedToken[],
+  gasCostPerLegWei: bigint,
+  feeBps: bigint | null,
+) {
   const gross = selected.reduce((sum, t) => sum + t.netOutWei, 0n);
   const gas = gasCostPerLegWei * BigInt(selected.length);
-  const fee = (gross * SWEEP_FEE_BPS) / 10_000n;
-  const receive = gross - fee - gas;
-  return { count: selected.length, gross, gas, fee, receive };
+  const fee = feeBps === null ? null : (gross * feeBps) / 10_000n;
+  const receive = fee === null ? null : gross - fee - gas;
+  return { count: selected.length, gross, gas, fee, receive, feeBps };
 }

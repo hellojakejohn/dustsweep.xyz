@@ -5,7 +5,7 @@ import { DELEGATED_NOTICE } from '../lib/delegation';
 import { formatEth, formatEthTrim, shortAddress } from '../lib/format';
 import { APPROVE_EXACT } from '../lib/permit2';
 import { DROP_REASON_COPY, legTotals, type SweepLeg } from '../lib/requote';
-import { SWEEP_FEE_BPS, type ScannedToken } from '../lib/scan';
+import type { ScannedToken } from '../lib/scan';
 import type { useSweep } from '../hooks/useSweep';
 import { Receipt } from './Receipt';
 
@@ -26,6 +26,7 @@ import { Receipt } from './Receipt';
  */
 export function SweepFlow({
   sweep,
+  feeBps,
   selected,
   allTokens,
   gasCostPerLegWei,
@@ -37,6 +38,12 @@ export function SweepFlow({
    * contents can change under it mid-run is the worst bug available here.
    */
   sweep: ReturnType<typeof useSweep>;
+  /**
+   * `feeBpsNative` as read on load for the preview. Once a sweep has
+   * started, `config.feeBpsNative` from the preflight read takes over;
+   * the two are the same storage slot and this is only the fallback.
+   */
+  feeBps: bigint | null;
   selected: ScannedToken[];
   /** Every scanned row, so a failed leg's address can be given a symbol. */
   allTokens: ScannedToken[];
@@ -59,7 +66,7 @@ export function SweepFlow({
     return (
       <Receipt
         receipt={sweep.receipt}
-        feeBps={config?.feeBpsNative ?? 300n}
+        feeBps={config?.feeBpsNative ?? feeBps ?? 0n}
         tokens={allTokens}
         onScanAgain={() => {
           sweep.reset();
@@ -78,7 +85,7 @@ export function SweepFlow({
         totals={legTotals(
           sweep.legs,
           gasCostPerLegWei,
-          config?.feeBpsNative ?? SWEEP_FEE_BPS,
+          config?.feeBpsNative ?? feeBps ?? 0n,
         )}
         onConfirm={() => void sweep.confirmDrift()}
         onCancel={sweep.cancelDrift}
@@ -153,14 +160,6 @@ export function SweepFlow({
                   : `Sweep ${selected.length} ${selected.length === 1 ? 'token' : 'tokens'}`}
           </button>
         </>
-      )}
-
-      {config && config.feeBpsNative !== SWEEP_FEE_BPS && (
-        <p className="mt-2.5 text-[11px] leading-relaxed text-tan">
-          The deployed contract takes {Number(config.feeBpsNative) / 100}%, not the{' '}
-          {Number(SWEEP_FEE_BPS) / 100}% in the estimate above. The number the contract
-          reports is the one that will be charged.
-        </p>
       )}
 
       {sweep.atomic === 'ready' && (
