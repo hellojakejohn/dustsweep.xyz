@@ -60,16 +60,26 @@
   .janitor-stage {
     --floor: 22px;
     --janitor-h: 118px;
-    /* floor + janitor + ~46px of clear air above his head, so the
-       counter in the top-right never sits on his face */
-    height: 186px;
+    /* Fills whatever the viewport has left below the copy, so on the
+       landing state he and the floor are on screen without scrolling.
+       min-height = floor + janitor + clear air for the counter; that is
+       what it collapses to once the page is taller than the screen. */
+    flex: 1 0 auto;
+    min-height: 172px;
     cursor: crosshair;
   }
   @media (min-width: 640px) {
     .janitor-stage {
       --floor: 28px;
       --janitor-h: 168px;
-      height: 252px;
+      min-height: 236px;
+    }
+  }
+  /* Short laptop windows: a slightly smaller janitor beats a scrollbar. */
+  @media (min-width: 640px) and (max-height: 860px) {
+    .janitor-stage {
+      --janitor-h: 144px;
+      min-height: 206px;
     }
   }
   .janitor-stage .floor {
@@ -160,6 +170,48 @@
   }
   .coin-tag.is-gone {
     opacity: 0;
+  }
+
+  /* Scan progress: a dusty floor that gets swept left to right. */
+  .sweep-track {
+    position: relative;
+    height: 10px;
+    border-radius: 999px;
+    overflow: visible;
+    background-color: var(--color-raise);
+    background-image: radial-gradient(circle, color-mix(in oklab, var(--color-faint) 70%, transparent) 1px, transparent 1.4px);
+    background-size: 6px 6px;
+    background-position: 0 1px;
+  }
+  .sweep-clean {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: 999px;
+    background: linear-gradient(90deg, color-mix(in oklab, var(--color-orange) 35%, var(--color-raise)), color-mix(in oklab, var(--color-orange) 70%, var(--color-raise)));
+    transition: width 300ms ease;
+  }
+  .sweep-broom {
+    position: absolute;
+    bottom: 3px;
+    margin-left: -9px;
+    line-height: 0;
+    transform-origin: 70% 15%;
+    animation: broom-sweep 560ms ease-in-out infinite alternate;
+    transition: left 300ms ease;
+    filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5));
+  }
+  @keyframes broom-sweep {
+    from {
+      transform: rotate(-14deg) translateX(-2px);
+    }
+    to {
+      transform: rotate(10deg) translateX(3px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sweep-broom {
+      animation: none;
+    }
   }
 
   .puff {

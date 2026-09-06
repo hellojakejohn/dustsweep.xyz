@@ -191,7 +191,7 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
   };
 
   return (
-    <div className="w-full max-w-[560px] rounded-[18px] border border-teal bg-card p-[22px]">
+    <div className="w-full max-w-[560px] rounded-[18px] border border-teal bg-card p-[18px] sm:p-5">
       {!isConnected ? (
         <Disconnected />
       ) : !onRightChain ? (
@@ -449,13 +449,13 @@ const HOW = [
 
 function Disconnected() {
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col text-center">
       <h2 className="text-[17px] font-semibold leading-snug text-cream sm:text-[19px]">
         Sell every dead token in your wallet. One signature.
       </h2>
       <p className="mt-2 text-[13px] leading-relaxed text-muted">
-        dustsweep finds the launchpad tokens you are stuck holding and sells the ones still
-        worth something, for ETH.
+        dustsweep finds the dead tokens you are stuck holding and sells the ones still worth
+        something, for ETH.
       </p>
 
       {/* How it works, in the fewest words that stay true. "for ETH" is
@@ -465,11 +465,11 @@ function Disconnected() {
           fork-tested and re-run through Gate 2. The pile legend and the
           not-dust rule live on the section headers after a scan, and
           the long version of everything is on /docs.html. */}
-      <ol className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+      <ol className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
         {HOW.map((h, i) => (
           <li
             key={h.title}
-            className="flex gap-3 rounded-xl border border-teal bg-raise p-3 sm:flex-col sm:gap-2.5"
+            className="flex gap-3 rounded-xl border border-teal bg-raise p-3 text-left sm:flex-col sm:items-center sm:gap-2 sm:text-center"
           >
             <span className="num flex size-7 shrink-0 items-center justify-center rounded-lg bg-orange text-[13px] font-semibold text-page">
               {i + 1}
@@ -482,9 +482,9 @@ function Disconnected() {
         ))}
       </ol>
 
-      <div className="mt-5">
+      <div className="mt-4">
         <ConnectButton full />
-        <p className="mt-2.5 text-[11px] leading-relaxed text-faint">
+        <p className="mt-2 text-[11px] leading-relaxed text-faint">
           Tokens you have never sold before need a one-off approval each. You see the full
           cost before you sign anything.
         </p>
@@ -579,22 +579,34 @@ function Progress({
   quoted: number;
   phase: string;
 }) {
+  const listing = phase === 'listing';
   const pct = found > 0 ? Math.min(100, Math.round((quoted / found) * 100)) : 0;
+  // While listing there is nothing to count yet, so the broom just works
+  // the left edge until the first balances land.
+  const edge = listing ? 6 : Math.max(6, pct);
   return (
     <div className="mb-1 pb-3">
       <div className="flex items-baseline justify-between text-[12px]">
         <span className="text-muted">
-          {phase === 'listing' ? 'Reading balances' : 'Quoting'}
+          {listing ? 'Reading your balances' : 'Pricing every token at three fee tiers'}
         </span>
-        <span className="num text-faint">
-          {phase === 'listing' ? '' : `${quoted} of ${found} quoted`}
-        </span>
+        <span className="num text-faint">{listing ? '' : `${quoted} of ${found}`}</span>
       </div>
-      <div className="mt-2 h-px w-full bg-teal">
-        <div
-          className="h-px bg-orange transition-[width] duration-300"
-          style={{ width: `${phase === 'listing' ? 4 : pct}%` }}
-        />
+      {/* The progress bar is a dusty floor. The swept part is clean, the
+          broom works the edge, the dust ahead of it is what is left to
+          quote. Pure CSS; the numbers above are the honest readout. */}
+      <div className="sweep-track mt-6" aria-hidden="true">
+        <div className="sweep-clean" style={{ width: `${edge}%` }} />
+        <div className="sweep-broom" style={{ left: `${edge}%` }}>
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none">
+            <path d="M15.5 2.5 9.8 12.4" stroke="#8a5a2b" strokeWidth="1.8" strokeLinecap="round" />
+            <path
+              d="M5.2 21.5c.3-4.2 2-7.4 4.6-9.6l3.6 2.1c-.6 3.4-2.4 6.2-5.3 8.1-1 .3-2 .1-2.9-.6Z"
+              fill="#d8b377"
+            />
+            <path d="M8.6 14.3 6.9 20.6M10.8 15.6 9.9 20.3" stroke="#8a5a2b" strokeWidth=".8" strokeLinecap="round" />
+          </svg>
+        </div>
       </div>
     </div>
   );

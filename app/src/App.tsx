@@ -23,7 +23,7 @@ export function App() {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="mx-auto flex w-full max-w-[560px] items-center justify-between gap-3 px-4 py-4">
+      <header className="mx-auto flex w-full max-w-[560px] items-center justify-between gap-3 px-4 py-3">
         <a href="/" className="flex items-center gap-2.5">
           <img
             src="/janitor-mark.png"
@@ -43,11 +43,10 @@ export function App() {
               nothing here draws it. Name stays in alt/title for screen
               readers and hover. */}
           <span
-            className="hidden h-8 items-center gap-1.5 rounded-lg border border-teal px-2.5 text-[11px] text-muted sm:inline-flex"
+            className="hidden h-8 items-center rounded-lg border border-teal px-1.5 sm:inline-flex"
             title={robinhoodChain.name}
           >
-            <img src="/robinhood-mark.png" alt={robinhoodChain.name} className="h-4 w-4 rounded-[3px]" />
-            <span>Chain</span>
+            <img src="/robinhood-mark.png" alt={robinhoodChain.name} className="h-5 w-5 rounded-[4px]" />
           </span>
           {/* Never hidden at any breakpoint, and never quiet. Demoing a
               fork that looks exactly like mainnet has burned people. */}
@@ -60,12 +59,12 @@ export function App() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-[560px] flex-col px-4 pt-[6vh]">
+      <main className="mx-auto flex w-full max-w-[560px] flex-col px-4 pt-2 sm:pt-3">
         <SweepCard onStatus={setStatus} />
 
-        <p className="mt-3.5 min-h-[16px] px-1 text-[11.5px] leading-relaxed text-muted">
-          {status}
-        </p>
+        {status && (
+          <p className="mt-3 px-1 text-center text-[11.5px] leading-relaxed text-muted">{status}</p>
+        )}
         {/* Renders in EVERY state, on purpose. This is the line a stranger
             reads while deciding whether to connect a wallet at all, so it
             cannot live inside the card -- the card's own copy only appears
@@ -73,7 +72,7 @@ export function App() {
             list. Do not soften "Unaudited", and do not hide it behind a
             tooltip or a details element. The full fee and money story
             lives on /docs.html; the one number that matters stays here. */}
-        <p className="mt-1 px-1 text-[11.5px] leading-relaxed text-muted">
+        <p className="mt-3 px-1 text-center text-[11.5px] leading-relaxed text-muted">
           Non-custodial. Unaudited.{' '}
           <a
             href={REPO_URL}
@@ -93,7 +92,7 @@ export function App() {
           .
         </p>
 
-        <p className="mt-3 px-1 text-[11.5px] leading-relaxed text-faint">
+        <p className="mt-2 px-1 text-center text-[11.5px] leading-relaxed text-faint">
           Two launchpads shipped ~63,000 tokens onto this chain, then turned off their front
           ends. Somebody has to sweep.
         </p>
