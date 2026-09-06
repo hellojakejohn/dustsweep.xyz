@@ -4,7 +4,6 @@ import { useDustScan } from '../hooks/useDustScan';
 import { chainName, robinhoodChain } from '../lib/chain';
 import { formatEth, formatEthTrim } from '../lib/format';
 import {
-  NOT_DUST_CEILING_WEI,
   QUOTE_HAIRCUT_BPS,
   totalsFor,
   type Pile,
@@ -436,91 +435,59 @@ function Line({
   );
 }
 
-const STATS = [
-  { value: '~63,000', label: 'tokens stranded on this chain' },
-  { value: '2', label: 'launchpads that shut their front ends' },
-  { value: '1', label: 'signature to clear yours' },
-];
-
 const HOW = [
-  { title: 'Connect', body: 'Read-only until you say otherwise.' },
-  { title: 'We price everything', body: 'Every token, against a live pool, three fee tiers.' },
+  { title: 'Connect', body: 'Read-only. Nothing is signed or sent.' },
   {
-    title: 'One signature',
-    body: 'Sells the lot for ETH. $SWEEP payout comes once its pool has depth.',
+    title: 'We sort',
+    body: 'Every token is priced against a live pool: worth selling, not worth the gas, or stuck.',
   },
-];
-const LEGEND: { pile: Pile; title: string; body: string }[] = [
-  { pile: 'sweepable', title: 'Worth sweeping', body: 'the quote clears the gas to sell it' },
   {
-    pile: 'underGas',
-    title: 'Costs more than it is worth',
-    body: 'priced, but selling loses you money',
+    title: 'You sweep',
+    body: 'Tick what you want gone, sign once, ETH lands in your wallet.',
   },
-  { pile: 'noRoute', title: 'No route out', body: 'no pool at any of the three fee tiers' },
 ];
 
 function Disconnected() {
   return (
     <div className="flex flex-col">
-      <p className="text-[13px] leading-relaxed text-muted">
-        Find every dead token in your wallet, price each one against a live pool, and see
-        which are actually worth selling.
+      <h2 className="text-[17px] font-semibold leading-snug text-cream sm:text-[19px]">
+        Sell every dead token in your wallet. One signature.
+      </h2>
+      <p className="mt-2 text-[13px] leading-relaxed text-muted">
+        dustsweep finds the launchpad tokens you are stuck holding and sells the ones still
+        worth something, for ETH.
       </p>
-
-      <dl className="mt-5 grid grid-cols-3 gap-3">
-        {STATS.map((s) => (
-          <div key={s.label}>
-            <dd className="num text-[22px] font-semibold leading-none text-tan">
-              {s.value}
-            </dd>
-            <dt className="mt-1.5 text-[10.5px] leading-snug text-faint">{s.label}</dt>
-          </div>
-        ))}
-      </dl>
 
       {/* How it works, in the fewest words that stay true. "for ETH" is
           deliberate: the contract can pay out in $SWEEP but that path is
-          not switched on, so the site does not offer it. Add the option
-          here only once setPayout has been called and the flow has been
-          fork-tested and re-run through Gate 2. */}
-      <ol className="mt-5 grid grid-cols-3 gap-3 border-t border-teal pt-4">
+          not switched on, so the site does not offer it. Add that here
+          only once setPayout has been called and the flow has been
+          fork-tested and re-run through Gate 2. The pile legend and the
+          not-dust rule live on the section headers after a scan, and
+          the long version of everything is on /docs.html. */}
+      <ol className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
         {HOW.map((h, i) => (
-          <li key={h.title} className="flex flex-col gap-1">
-            <span className="num text-[11px] text-orange">{i + 1}</span>
-            <span className="text-[12px] font-medium leading-snug text-cream">{h.title}</span>
-            <span className="text-[10.5px] leading-snug text-faint">{h.body}</span>
+          <li
+            key={h.title}
+            className="flex gap-3 rounded-xl border border-teal bg-raise p-3 sm:flex-col sm:gap-2.5"
+          >
+            <span className="num flex size-7 shrink-0 items-center justify-center rounded-lg bg-orange text-[13px] font-semibold text-page">
+              {i + 1}
+            </span>
+            <span className="flex flex-col gap-1">
+              <span className="text-[13px] font-semibold leading-snug text-cream">{h.title}</span>
+              <span className="text-[11px] leading-snug text-muted">{h.body}</span>
+            </span>
           </li>
         ))}
       </ol>
 
-      <ul className="mt-5 space-y-1.5 border-t border-teal pt-4">
-        {LEGEND.map((l) => (
-          <li key={l.pile} className="flex items-baseline gap-2 text-[11.5px]">
-            <span
-              className={`size-1.5 shrink-0 translate-y-[-1px] rounded-full ${DOT[l.pile]}`}
-              aria-hidden="true"
-            />
-            <span className="text-cream">{l.title}</span>
-            <span className="min-w-0 truncate text-faint">{l.body}</span>
-          </li>
-        ))}
-      </ul>
-
-      <p className="mt-4 text-[11px] leading-relaxed text-faint">
-        Holdings worth more than {formatEthTrim(NOT_DUST_CEILING_WEI)} ETH, and anything
-        Robinhood issued, are held back in a fourth pile as not dust.
-      </p>
-
-      <p className="mt-2 text-[11px] leading-relaxed text-faint">
-        One signature covers the whole batch. Each token also needs a one-off approval the
-        first time you sweep it, so a fresh wallet pays those first, then signs once, then
-        sends one transaction.
-      </p>
-
-      <div className="mt-4">
+      <div className="mt-5">
         <ConnectButton full />
-        <p className="mt-2.5 text-[11px] text-faint">Read-only. Nothing is signed or sent.</p>
+        <p className="mt-2.5 text-[11px] leading-relaxed text-faint">
+          Tokens you have never sold before need a one-off approval each. You see the full
+          cost before you sign anything.
+        </p>
       </div>
     </div>
   );

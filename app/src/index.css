@@ -60,14 +60,16 @@
   .janitor-stage {
     --floor: 22px;
     --janitor-h: 118px;
-    height: 150px;
+    /* floor + janitor + ~46px of clear air above his head, so the
+       counter in the top-right never sits on his face */
+    height: 186px;
     cursor: crosshair;
   }
   @media (min-width: 640px) {
     .janitor-stage {
       --floor: 28px;
       --janitor-h: 168px;
-      height: 210px;
+      height: 252px;
     }
   }
   .janitor-stage .floor {

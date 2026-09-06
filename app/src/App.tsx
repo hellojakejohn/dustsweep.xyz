@@ -37,10 +37,17 @@ export function App() {
           </span>
         </a>
         <div className="flex items-center gap-2">
-          {/* The chain by name. The id is plumbing and belongs in the
-              address book, not in the header. */}
-          <span className="hidden h-8 items-center rounded-lg border border-teal px-2.5 text-[11px] text-muted sm:inline-flex">
-            {robinhoodChain.name}
+          {/* The chain by mark. Jake's call, 6 Sep, reversing the day-7
+              text-only decision. The file is Robinhood's own asset from
+              their brand page, dropped in as public/robinhood-mark.png;
+              nothing here draws it. Name stays in alt/title for screen
+              readers and hover. */}
+          <span
+            className="hidden h-8 items-center gap-1.5 rounded-lg border border-teal px-2.5 text-[11px] text-muted sm:inline-flex"
+            title={robinhoodChain.name}
+          >
+            <img src="/robinhood-mark.png" alt={robinhoodChain.name} className="h-4 w-4 rounded-[3px]" />
+            <span>Chain</span>
           </span>
           {/* Never hidden at any breakpoint, and never quiet. Demoing a
               fork that looks exactly like mainnet has burned people. */}
