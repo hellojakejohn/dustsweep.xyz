@@ -51,6 +51,39 @@ deployments page for 4663, on-chain self-report (`factory()` and `WETH9()`
 both cross-reference correctly), and Noxa's and Pons V1's own live
 `getDexConfig(0)` which both return it as their production router.
 
+### Deployed 5 Sep 2026 (mainnet, chain 4663)
+
+```
+Sweeper         0x3b0AD85011d082C29C76F75F4aAf4674Dd416Cc2
+V3Adapter       0x6B900fDF5B3C65bafb2A5Bff7624C6DB7dA05AA1  registered via setAdapter
+Owner/fee sink  0x5dCD1D1DD0F797a24Cc509fDd0Df9e8747bBD01b  Ledger, m/44'/60'/1'/0/0
+```
+
+Deploy txs:
+
+```
+V3Adapter   0xf29aa7862d97e3a3f3a91954da2d5ca7a2dc7b92f4b0e25d52a65d6b04bbdbf7
+Sweeper     0xaa6bb678857e5d6509a596a7f43b2ced2c38b73cb7de602a7012f72ed996cd05
+setAdapter  0x671dbb1935b8df61c34b7fb106fe5e142138cb264e05b1481ef304222d2fdc3b
+```
+
+Both contracts verified on Sourcify (exact_match) and show as verified on
+robinhoodchain.blockscout.com. The app only needs the Sweeper address; it
+is committed as `SWEEPER_DEPLOYED` in `app/src/lib/addresses.ts`.
+
+**`forge verify-contract --verifier blockscout` fails against the
+Blockscout API with a Cloudflare challenge**, same fingerprinting as the
+public RPC. Verification goes through Sourcify and Blockscout imports it:
+
+```
+forge verify-contract <addr> src/Sweeper.sol:Sweeper \
+  --verifier sourcify --chain 4663
+```
+
+**`forge script` with `--ledger` needs `--mnemonic-derivation-paths`
+(plural)** and the owner path is `m/44'/60'/1'/0/0`. The singular flag
+does not exist.
+
 ### Never route v3 swaps through UniversalRouter
 
 `0x8876789976dEcBfCbBbe364623C63652db8C0904` is a Robinhood-modified fork.
@@ -148,11 +181,12 @@ Graduation thresholds are denominated in the pair token and vary widely
 
 - `Sweeper.sol` -- entry point. Holds no balance, whitelisted adapters
   only, Permit2 batch is the authoritative list of movable tokens.
-  **Written. Not yet deployed.**
+  **Deployed 5 Sep 2026 at `0x3b0AD85011d082C29C76F75F4aAf4674Dd416Cc2`.**
 - `V3Adapter.sol` -- token to WETH via SwapRouter02, enforces `minOut`,
   sends WETH straight back to the caller, ownerless and immutable.
-  Covers Noxa + Pons V1 + graduated V2. **Written, 12/12 fork tests pass
-  against real mainnet state. Not deployed.**
+  Covers Noxa + Pons V1 + graduated V2. **12/12 fork tests pass against
+  real mainnet state. Deployed 5 Sep 2026 at
+  `0x6B900fDF5B3C65bafb2A5Bff7624C6DB7dA05AA1`, registered on the Sweeper.**
 - Curve adapter -- later. Explicitly on the cut list.
 
 **`ISweepAdapter` approves, it does not transfer.** The code path in

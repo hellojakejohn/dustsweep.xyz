@@ -155,7 +155,7 @@ export const WETH_IMPL = '0xc6b81b429797e0f555440b70cd99e032d7ae947e';
  * than none, because the failure is a revert at signing time rather than
  * a message at load time.
  */
-const SWEEPER_DEPLOYED: string = '';
+const SWEEPER_DEPLOYED: string = '0x3b0AD85011d082C29C76F75F4aAf4674Dd416Cc2';
 
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 
