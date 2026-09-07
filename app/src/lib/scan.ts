@@ -26,6 +26,36 @@ export const GAS_PER_LEG = 230_000n;
 export const QUOTE_HAIRCUT_BPS = 300n;
 
 /**
+ * The public RPC rate-limits, and when it rejects a call the response
+ * carries a malformed CORS header, so the browser surfaces it as a bare
+ * "Failed to fetch" rather than a 429. The transport's own retry fires
+ * ~150ms apart, which is inside the same limit window. This backs off
+ * 0.5s, 1s, 2s, 4s before giving up, and never substitutes a stale
+ * price: the number that sorts the piles has to be current.
+ */
+async function readGasPriceWithBackoff(
+  client: PublicClient,
+  signal?: AbortSignal,
+): Promise<bigint> {
+  const delaysMs = [500, 1000, 2000, 4000];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
+    if (signal?.aborted) throw new Error('Scan cancelled');
+    try {
+      return await client.getGasPrice();
+    } catch (err) {
+      lastErr = err;
+      if (attempt === delaysMs.length) break;
+      await new Promise((r) => setTimeout(r, delaysMs[attempt]));
+    }
+  }
+  throw new Error(
+    'The public RPC is rate-limiting right now. Wait a few seconds and try again.',
+    { cause: lastErr },
+  );
+}
+
+/**
  * A holding worth more than this is not dust, whatever the pools say.
  *
  * Raised from 0.01 to 0.1 ETH on Jake's call. At 0.01 the ceiling held
@@ -243,7 +273,7 @@ export async function scanWallet(opts: {
     return;
   }
 
-  const gasPriceWei = await client.getGasPrice();
+  const gasPriceWei = await readGasPriceWithBackoff(client, signal);
   const gasCostPerLegWei = gasPriceWei * GAS_PER_LEG;
   onUpdate({ gasPriceWei, gasCostPerLegWei });
 
