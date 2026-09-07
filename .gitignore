@@ -25,3 +25,7 @@ docs/_to_delete/
 # Working docs and launch notes. Held back until after launch -- publishing
 # is one-way, adding them later is not. Delete these two lines to include.
 docs/
+
+# Handoffs and the decisions log. Same reason as docs/: the funding route
+# and a personal address live in here.
+claude/

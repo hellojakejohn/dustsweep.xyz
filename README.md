@@ -44,8 +44,10 @@ forge build
 
 ## Test
 
-The suite forks mainnet, so it needs a live RPC. `rhc` is defined in
-`foundry.toml` and points at the public endpoint, which is rate-limited.
+The suite forks mainnet, so it needs a live RPC. `rhc` in `foundry.toml`
+reads `RHC_RPC_URL` from a gitignored `.env` (see `.env.example`). The
+public endpoint will not work for forking: Cloudflare fingerprints
+Foundry's HTTP stack and returns a challenge page instead of JSON.
 
 ```bash
 forge test --fork-url rhc -vv
@@ -68,5 +70,13 @@ route out, and not dust.
 
 ## Status
 
-The contracts are written, tested and not yet deployed. The front end is
-read-only: it can price your dust but it cannot send a transaction.
+Live at <https://dustsweep.xyz>. Deployed on chain 4663, verified on
+Blockscout and Sourcify:
+
+```
+Sweeper    0x3b0AD85011d082C29C76F75F4aAf4674Dd416Cc2
+V3Adapter  0x6B900fDF5B3C65bafb2A5Bff7624C6DB7dA05AA1
+```
+
+Unaudited. Fork-tested against real dead tokens, run through Aderyn, and
+used on the author's own wallet first. That is not an audit.
