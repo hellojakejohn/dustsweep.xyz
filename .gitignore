@@ -29,3 +29,12 @@ docs/
 # Handoffs and the decisions log. Same reason as docs/: the funding route
 # and a personal address live in here.
 claude/
+
+# Scratch output folders. These keep reappearing untracked AND unignored,
+# which is the dangerous combination: one `git add -A` publishes whatever
+# is in them to a public repo. Ignored by name so they cannot come back.
+# Currently holds banner PNGs; it has previously held the launch kit and
+# the handoffs. Put working files somewhere tracked, or leave them here.
+Claude outputs/
+claude-outputs/
+Claude Outputs/

@@ -1,5 +1,5 @@
 import { erc20Abi, type Address, type PublicClient } from 'viem';
-import { FEE_TIERS, TOKENS, UNISWAP_V3 } from './addresses';
+import { FEE_TIERS, SWEEP_TOKEN, TOKENS, UNISWAP_V3 } from './addresses';
 import { quoterV2Abi } from './quoter';
 import { probeWillMove } from './willmove';
 import type { HeldToken } from './blockscout';
@@ -91,9 +91,23 @@ export function isRobinhoodToken(name: string | null | undefined): boolean {
   return (name ?? '').trimEnd().endsWith(ROBINHOOD_TOKEN_SUFFIX);
 }
 
-/** The payout asset and the chain's stablecoin. Never quoted, never shown. */
+/**
+ * The payout asset, the chain's stablecoin, and our own token. Never
+ * quoted, never shown.
+ *
+ * SWEEP is here for a different reason than the other two. It trades on
+ * a Pons V2 bonding curve, and after graduation it moves to a Uniswap
+ * *v4* pool -- neither of which this scanner can quote, because it only
+ * knows v3 pools at the three fee tiers. So without this line the app
+ * files its own token under "No route out" in front of every holder who
+ * connects, forever. That is not a quote failure worth showing anyone,
+ * and a holder of SWEEP is not holding dust.
+ *
+ * Revisit only if a v4 quoter lands in the scan path. Even then it
+ * probably belongs in `notDust`, not `sweepable`.
+ */
 const NEVER_SWEEP = new Set<string>(
-  [TOKENS.WETH, TOKENS.USDG].map((a) => a.toLowerCase()),
+  [TOKENS.WETH, TOKENS.USDG, SWEEP_TOKEN].map((a) => a.toLowerCase()),
 );
 
 export type Pile = 'sweepable' | 'underGas' | 'noRoute' | 'notDust';

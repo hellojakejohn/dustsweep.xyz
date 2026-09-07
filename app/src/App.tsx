@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CapabilityProbe } from './components/CapabilityProbe';
 import { ConnectButton } from './components/Connect';
 import { JanitorStage } from './components/JanitorStage';
+import { SweepCA } from './components/SweepCA';
 import { SweepCard } from './components/SweepCard';
 import { robinhoodChain } from './lib/chain';
 import { FIXTURE_IS_ON } from './lib/fixture';
@@ -91,6 +92,15 @@ export function App() {
           </a>
           .
         </p>
+
+        {/* Sits under the disclosure on purpose. Same block, same job:
+            this is the trust column, and the CA is now part of it. It
+            renders in every state -- somebody who has already connected
+            and is looking at their dust still needs to be able to grab
+            the address without going back. Do not move it into the card
+            (the card's contents change per state) and do not hide it at
+            a breakpoint. Impersonation risk is the reason it exists. */}
+        <SweepCA />
 
         {SHOW_CAPS && <CapabilityProbe />}
       </main>

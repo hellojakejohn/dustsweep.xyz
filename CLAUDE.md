@@ -248,10 +248,11 @@ first time the three-pile sort has been observed working against a
 fixture built on purpose rather than against whatever a real wallet
 happened to hold.
 
-The sweep button reads "Contract not deployed yet" and is a hardcoded
-`disabled` placeholder in `SweepCard.tsx`, not a failed address read.
-That button is where the write half plugs in, and `requireSweeper()` is
-what it should call.
+(Stale as of 5 Sep 2026, kept for the trail: the sweep button used to
+read "Contract not deployed yet" and was a hardcoded `disabled`
+placeholder in `SweepCard.tsx`. The write half has since been plugged in
+and the Sweeper is live at `0x3b0AD85011d082C29C76F75F4aAf4674Dd416Cc2`,
+read through `requireSweeper()`.)
 
 **Trap 8: a token can quote perfectly and still refuse to move.**
 **BOW preflight: closed.** BOW
@@ -620,11 +621,30 @@ Do not cut it.
    **The fee disclosure ships next to it, every time:** the Sweeper
    keeps 5% of what the dust sold for, the contract cannot go higher,
    gas is the user's. Right now 100% of the 5% lands in the Ledger fee
-   sink `0x5dCD1D1DD0F797a24Cc509fDd0Df9e8747bBD01b` (dev). Once SWEEP
-   exists and `BuybackBurner` runs, the intent is 2.5% buy-and-burn
-   SWEEP / 2.5% dev. Disclose the Pons creator fee stream alongside:
-   70% of Pons' 1% trade fee on SWEEP goes 100% to dev. Site copy in
+   sink `0x5dCD1D1DD0F797a24Cc509fDd0Df9e8747bBD01b` (dev). SWEEP now
+   exists; once `BuybackBurner` is deployed and `setFeeSink` is called,
+   the intent is 2.5% buy-and-burn SWEEP / 2.5% dev. Site copy in
    `claude/dustsweep-decisions.md`, 2026-09-05 (late).
+   **The Pons creator fee stream, corrected 7 Sep 2026.** An earlier
+   version of this line said "70% of Pons' 1% trade fee on SWEEP goes
+   100% to dev". That was wrong and it was wrong in a public file.
+   Read off the launch form and the factory at launch time:
+   `curveFeeBps` is 100, so the total trade fee is 1.00%, and
+   `maxCreatorTaxBps` is 1000, so a creator tax can be at most 10%.
+   Critically, creator tax is **additive, not carved out** of the 1%:
+   setting it to 10% recomputes the form to "Traders pay 11.00% in
+   total." SWEEP launched with creator tax at **0**, so traders pay the
+   standard 1% and nothing on top. Do not change it -- it is the
+   strongest honest-janitor line available and it is verifiable in the
+   launch calldata.
+   The creator's share of that 1% is claimed from `PonsV2FeeEscrow`
+   (`0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e`) via `claim()`. The
+   exact split of the 1% is NOT verified -- do not put a number on it
+   anywhere, on the site or off it. `/docs.html` says "Pons takes a fee
+   and pays part of it to whoever launched the token", which is what is
+   actually known. How this behaves after graduation is also unverified:
+   the UI has separate "Collect curve fees" and "Claim ETH" buttons, so
+   the mechanism differs and that path has never been read.
 2. **These never get cut for schedule:** fork tests against real dead
    tokens, `slither .`, `aderyn .`, sweeping Jake's own wallet first, the
    receipt/share card, the unaudited disclosure.

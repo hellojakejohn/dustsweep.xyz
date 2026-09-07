@@ -228,3 +228,23 @@ export function requireV3Adapter(): `0x${string}` {
   }
   return V3_ADAPTER;
 }
+
+/**
+ * The official SWEEP token, launched on Pons V2 on 7 Sep 2026 in tx
+ * 0x4401128bc3f185af7f9af2d9a7c31d3ccb40c09c3db55048c8e738ee340ce145
+ * (block 57,175,489). 1,000,000,000 supply, 18 decimals, fixed at launch.
+ *
+ * This is the ONLY place the address is written in the app. The site's
+ * whole defence against an impersonator token is that the canonical CA
+ * is easy to find and identical everywhere it appears, so anything that
+ * needs it imports this -- never a second literal, never a prop, never
+ * an env var. `docs.html` is hand-written and carries its own copy;
+ * if this line ever changes, that file changes in the same commit.
+ *
+ * Checksummed. Compare byte-for-byte before trusting a copy from
+ * anywhere else, including a screenshot of this file.
+ */
+export const SWEEP_TOKEN = '0x73F6Bf7df8450BC7dE6d8aa20754dC8678fdaed8' as const;
+
+/** The Pons V2 bonding curve SWEEP trades on until it graduates. */
+export const SWEEP_CURVE = '0xb599E59ef3436EAE88548b9b0ebDAbd3CF244912' as const;
