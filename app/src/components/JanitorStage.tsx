@@ -212,7 +212,7 @@ function Graveyard({
 
   return (
     <div className="graveyard pointer-events-none absolute inset-y-0 left-0">
-      <div className="px-2 pt-3 sm:px-2.5 sm:pt-4">
+      <div className="grave-head px-2 pt-3 pb-2 sm:px-2.5 sm:pt-4">
         <p className="num text-[18px] font-semibold leading-none text-tan sm:text-[22px]">
           <Odometer value={total} />
         </p>
@@ -236,23 +236,25 @@ function Graveyard({
 
       {/* Newest first in the DOM; row-reverse puts it on the right, next
           to the janitor, and wrap-reverse stacks the older rows upward. */}
-      <div className="grave-plot">
-        {[...visible].reverse().map((h, i) => {
-          const fresh = !seen.current.has(h.txHash);
-          if (fresh) seen.current.add(h.txHash);
-          // Oldest of the visible fade out toward the cap.
-          const fade = Math.max(0.35, 1 - Math.max(0, i - 3) * 0.09);
-          return (
-            <span
-              key={`${h.txHash}-${h.token}`}
-              className={`stone${fresh ? ' stone-rise' : ''}`}
-              style={{ opacity: fade }}
-              title={h.symbol}
-            >
-              <span>{h.symbol}</span>
-            </span>
-          );
-        })}
+      <div className="grave-plot-wrap">
+        <div className="grave-plot">
+          {[...visible].reverse().map((h, i) => {
+            const fresh = !seen.current.has(h.txHash);
+            if (fresh) seen.current.add(h.txHash);
+            // Oldest of the visible fade out toward the cap.
+            const fade = Math.max(0.35, 1 - Math.max(0, i - 3) * 0.09);
+            return (
+              <span
+                key={`${h.txHash}-${h.token}`}
+                className={`stone${fresh ? ' stone-rise' : ''}`}
+                style={{ opacity: fade }}
+                title={h.symbol}
+              >
+                <span>{h.symbol}</span>
+              </span>
+            );
+          })}
+        </div>
       </div>
       {hidden > 0 && (
         <p className="grave-older num text-[9px] leading-none text-faint/80">+{hidden} older</p>
