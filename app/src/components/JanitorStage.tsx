@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { usePublicClient } from 'wagmi';
 import {
   getGraveyard,
@@ -10,7 +10,6 @@ import {
   onTotal,
   startFeed,
   type Headstone,
-  type LastSweep,
   type SweepEvent,
 } from '../lib/feed';
 import { formatEthTrim } from '../lib/format';
@@ -97,8 +96,9 @@ const BREAK_LINES = ['coffee.', '...', 'five minutes.', 'fine.'];
 
 /* ---------- component ----------------------------------------------- */
 // The counter used to be an odometer pinned top right. Since 8 Sep it is
-// the header of the graveyard strip on the LEFT (see Graveyard below),
-// and the engine keeps him and the coins out of that strip via --grave-w.
+// the top of the shift log on the LEFT (see ShiftLog below), the
+// janitor's clipboard, and the engine keeps him and the coins out of
+// that strip via --log-w.
 
 export function JanitorStage() {
   const reduced = useReducedMotion();
@@ -114,24 +114,24 @@ export function JanitorStage() {
   );
 }
 
-function LiveScene() {
+/** The feed, started once per page, and the running total for the log. */
+function useFeedTotal() {
   const client = usePublicClient();
+  const [total, setTotal] = useState(getTotal());
+  useEffect(() => {
+    if (client) startFeed(client);
+    return onTotal(() => setTotal(getTotal()));
+  }, [client]);
+  return total;
+}
+
+function LiveScene() {
   const busy = useBusy();
   const busyRef = useRef(busy);
   busyRef.current = busy;
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const [total, setTotal] = useState(getTotal());
-  const [last, setLast] = useState(getLast());
-
-  // Live feed. Starts once per page, survives re-renders.
-  useEffect(() => {
-    if (client) startFeed(client);
-    return onTotal(() => {
-      setTotal(getTotal());
-      setLast(getLast());
-    });
-  }, [client]);
+  const total = useFeedTotal();
 
   // The engine. Built once; reads busy through the ref.
   useEffect(() => {
@@ -148,136 +148,216 @@ function LiveScene() {
   return (
     <>
       <div ref={rootRef} className="absolute inset-0 touch-manipulation" />
-      <Graveyard total={total.total} complete={total.complete} last={last} />
+      <ShiftLog total={total.total} complete={total.complete} reduced={false} />
     </>
   );
 }
 
-/** How many stones stand in the plot at once. Older ones fade, then go;
- *  the odometer still counts them. Fewer on a phone, where the strip is
- *  two stones wide and the stage is 172px tall. */
-function graveVisible(): number {
-  return typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches ? 12 : 4;
-}
+/* ---------- shift log ----------------------------------------------- */
+
+/** Around 400ms with a small settle at the end, so a row lands with
+ *  some weight instead of easing to a stop. */
+const DROP_MS = 420;
+const DROP_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+/** A row older than this when it first shows up was backfilled, not
+ *  witnessed, and is simply there. Only live arrivals drop. */
+const LIVE_WINDOW_MS = 60_000;
 
 /**
- * The graveyard. A strip down the left edge of the stage: the odometer
- * and its label up top, the plot of headstones standing on the floor
- * below, one stone per token the Sweeper has actually sold, ticker read
- * off the chain. Newest nearest the janitor, rows wrapping upward.
+ * The shift log. The janitor's clipboard, hung on the left wall of the
+ * stage: the odometer and its label under the clip, then one line per
+ * token the Sweeper has actually sold, newest at the top, ticker read
+ * off the chain. A row exists because a sweep transaction on chain named
+ * that token in its `legs` and the receipt says the leg filled.
  *
- * Real data only. If the chain has two stones in it, there are two
- * stones. Nothing is seeded, padded or drawn dim behind it. The ~63,000
- * dead tokens on this chain are a real number and a real future feature
- * (the offline TokenDeployed index), and until that index exists nothing
- * that was not read off the chain goes on this screen.
+ * Real data only. If the chain has two rows in it, there are two rows.
+ * Nothing is seeded, padded or drawn dim behind it. The ~63,000 dead
+ * tokens on this chain are a real number and a real future feature (the
+ * offline TokenDeployed index), and until that index exists nothing that
+ * was not read off the chain goes on this page.
  *
  * The odometer counts every `legsFilled` in every Swept log and can
- * legitimately exceed the number of stones once the hydration cap
- * bites; then the plot shows what it has and says `+N older`.
+ * legitimately exceed the number of rows once the hydration cap bites;
+ * then the page shows what it has and says `+N older`.
+ *
+ * Render only. Everything it shows comes from lib/feed.ts as-is. The one
+ * thing the feed does not hand over per row is the sweep's ETH payout, so
+ * the hover title carries it only where this component has seen it: the
+ * tail sweep (`getLast`) and anything that arrived live (`onSweep`).
  */
-function Graveyard({
+function ShiftLog({
   total,
   complete,
-  last,
+  reduced,
 }: {
   total: number;
   complete: boolean;
-  last: LastSweep | null;
+  reduced: boolean;
 }) {
-  // Re-render every 30s so "4m ago" keeps moving without a feed event.
+  // Re-render every 30s so "4m" keeps moving without a feed event.
   const [, tick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => tick((n) => n + 1), 30_000);
     return () => clearInterval(id);
   }, []);
-  const [stones, setStones] = useState<Headstone[]>(() => [...getGraveyard()]);
+  const [rows, setRows] = useState<Headstone[]>(() => [...getGraveyard()]);
   const [older, setOlder] = useState(getGraveyardOlder());
   useEffect(
     () =>
       onGraveyard(() => {
-        setStones([...getGraveyard()]);
+        setRows([...getGraveyard()]);
         setOlder(getGraveyardOlder());
       }),
     [],
   );
-  // Stones that were already standing when this render tree mounted do
-  // not rise again on a re-render; only ones that arrive later do.
-  const seen = useRef(new Set(stones.map((h) => h.txHash)));
+
+  // What each sweep paid out, by tx, for the hover detail. Seeded from
+  // the tail sweep and topped up by live events; backfilled sweeps other
+  // than the tail have no figure and their title omits it.
+  const outByTx = useRef(new Map<string, bigint>());
+  useEffect(() => {
+    const note = () => {
+      const l = getLast();
+      if (l) outByTx.current.set(l.txHash, l.userOutWei);
+    };
+    note();
+    const offTotal = onTotal(note);
+    const offSweep = onSweep((e) => outByTx.current.set(e.txHash, e.userOutWei));
+    return () => {
+      offTotal();
+      offSweep();
+    };
+  }, []);
+
+  // Rows already on the page when this tree mounted, or that arrived from
+  // the backfill, are just there. Rows that arrive while somebody is
+  // watching drop in, and the rows under them shift down at the same time.
+  const seen = useRef(new Set(rows.map(rowKey)));
+  const boardRef = useRef<HTMLDivElement>(null);
+  const rowEls = useRef(new Map<string, HTMLLIElement>());
+  const dropping = useRef<string[]>([]);
+
+  const newestFirst = [...rows].reverse();
+  for (const h of newestFirst) {
+    const k = rowKey(h);
+    if (seen.current.has(k)) continue;
+    seen.current.add(k);
+    if (!reduced && Date.now() - h.at < LIVE_WINDOW_MS) dropping.current.push(k);
+  }
+
+  useLayoutEffect(() => {
+    const fresh = dropping.current;
+    dropping.current = [];
+    const board = boardRef.current;
+    if (fresh.length === 0 || !board) return;
+    const freshSet = new Set(fresh);
+    let shift = 0;
+    for (const k of fresh) shift += rowEls.current.get(k)?.offsetHeight ?? 0;
+    const boardTop = board.getBoundingClientRect().top;
+    for (const [k, el] of rowEls.current) {
+      if (freshSet.has(k)) {
+        // From above the board, past the clip, down to its slot.
+        const r = el.getBoundingClientRect();
+        const from = boardTop - r.bottom - 8;
+        el.animate(
+          [
+            { transform: `translateY(${from}px)`, easing: DROP_EASE },
+            { transform: 'translateY(2px)', offset: 0.82, easing: 'ease-out' },
+            { transform: 'translateY(0)' },
+          ],
+          { duration: DROP_MS },
+        );
+      } else if (shift > 0) {
+        el.animate(
+          [
+            { transform: `translateY(${-shift}px)`, easing: DROP_EASE },
+            { transform: 'translateY(1px)', offset: 0.82, easing: 'ease-out' },
+            { transform: 'translateY(0)' },
+          ],
+          { duration: DROP_MS },
+        );
+      }
+    }
+  });
 
   if (total === 0 && !complete) return null;
 
-  const visible = stones.slice(-graveVisible());
-  const hidden = stones.length - visible.length + older;
-
   return (
-    <div className="graveyard pointer-events-none absolute inset-y-0 left-0">
-      <div className="grave-head px-2 pt-3 pb-2 sm:px-2.5 sm:pt-4">
-        <p className="num text-[18px] font-semibold leading-none text-tan sm:text-[22px]">
-          <Odometer value={total} />
-        </p>
-        <p className="mt-1 text-[10.5px] leading-snug text-faint">
-          dead {total === 1 ? 'token' : 'tokens'} swept
-          {complete ? ' since launch' : ' lately'}
-          {total === 0 ? '. Yet.' : ''}
-        </p>
-        {/* Three short lines rather than one that wraps mid-number: the
-            strip is 120px wide and "0.00233 ETH · 12h ago" is not. */}
-        {last && (
-          <p className="num mt-1.5 text-[10px] leading-snug text-faint/80">
-            <span className="block">
-              last: <span className="text-muted">{lastSymbols(last)}</span>
-            </span>
-            <span className="block">{formatEthTrim(last.userOutWei)} ETH</span>
-            <span className="block">{ago(last.at)}</span>
-          </p>
-        )}
-      </div>
-
-      {/* Newest first in the DOM; row-reverse puts it on the right, next
-          to the janitor, and wrap-reverse stacks the older rows upward. */}
-      <div className="grave-plot-wrap">
-        <div className="grave-plot">
-          {[...visible].reverse().map((h, i) => {
-            const fresh = !seen.current.has(h.txHash);
-            if (fresh) seen.current.add(h.txHash);
-            // Oldest of the visible fade out toward the cap.
-            const fade = Math.max(0.35, 1 - Math.max(0, i - 3) * 0.09);
-            return (
-              <span
-                key={`${h.txHash}-${h.token}`}
-                className={`stone${fresh ? ' stone-rise' : ''}`}
-                style={{ opacity: fade }}
-                title={h.symbol}
-              >
-                <span>{h.symbol}</span>
-              </span>
-            );
-          })}
+    <div className="shift-log pointer-events-none absolute inset-y-0 left-0">
+      <div ref={boardRef} className="clipboard">
+        <span className="clip" />
+        <div className="log-page">
+          <div className="log-head">
+            <p className="num text-[18px] font-semibold leading-none text-tan sm:text-[22px]">
+              <Odometer value={total} />
+            </p>
+            <p className="log-label mt-1 leading-snug text-faint">
+              dead {total === 1 ? 'token' : 'tokens'} swept
+              {complete ? ' since launch' : ' lately'}
+              {total === 0 ? '. Yet.' : ''}
+            </p>
+          </div>
+          {/* Every row is rendered; the page clips the bottom and fades
+              the last one that only half fits. How many show is whatever
+              the page has room for at this height, not a number. */}
+          <ul className="log-rows">
+            {newestFirst.map((h) => {
+              const k = rowKey(h);
+              const out = outByTx.current.get(h.txHash);
+              const tx = `${h.txHash.slice(0, 6)}…${h.txHash.slice(-4)}`;
+              const title = out !== undefined
+                ? `${h.symbol} · sweep paid ${formatEthTrim(out)} ETH · ${tx}`
+                : `${h.symbol} · ${tx}`;
+              return (
+                <li
+                  key={k}
+                  ref={(node) => {
+                    if (node) rowEls.current.set(k, node);
+                    else rowEls.current.delete(k);
+                  }}
+                  className="log-row num"
+                  title={title}
+                >
+                  <span className="log-dot" style={{ background: coinColor(h.token) }} />
+                  <span className="log-sym">{h.symbol}</span>
+                  <span className="log-ago">{agoShort(h.at)}</span>
+                </li>
+              );
+            })}
+          </ul>
+          {older > 0 && <p className="log-older num text-faint">+{older} older</p>}
         </div>
       </div>
-      {hidden > 0 && (
-        <p className="grave-older num text-[9px] leading-none text-faint/80">+{hidden} older</p>
-      )}
     </div>
   );
 }
 
-/** "TOAD" / "TOAD +2" / "2 tokens" when the calldata could not be read. */
-function lastSymbols(l: LastSweep): string {
-  const [first, ...rest] = l.symbols.filter((x) => x && x !== '?');
-  if (!first) return `${l.legsFilled} ${l.legsFilled === 1 ? 'token' : 'tokens'}`;
-  return rest.length ? `${first} +${rest.length}` : first;
+function rowKey(h: Headstone): string {
+  return `${h.txHash}-${h.token}`;
 }
 
-function ago(ms: number): string {
+/** The same token is the same colour for every visitor on every reload:
+ *  a small hash of the address, modulo the coin palette. That one bit of
+ *  consistency is what makes the page read as a record. */
+export function coinColor(token: string): string {
+  let h = 0x811c9dc5;
+  const s = token.toLowerCase();
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return COLORS[h % COLORS.length]!;
+}
+
+/** `now`, `4m`, `13h`, `2d`. Sized for a column three characters wide. */
+function agoShort(ms: number): string {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
-  if (s < 60) return 'just now';
+  if (s < 60) return 'now';
   const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return `${m}m`;
   const h = Math.round(m / 60);
-  if (h < 48) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
+  if (h < 48) return `${h}h`;
+  return `${Math.round(h / 24)}d`;
 }
 
 /**
@@ -370,9 +450,9 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
   let floorY = H - cssPx(root, '--floor', 24);
   let jH = cssPx(root, '--janitor-h', 150);
   let jW = jH * (USE_RIG ? 0.62 : FRAME_ASPECT); // footprint, for hit tests and reach
-  // The graveyard strip on the left. He does not walk through it and
-  // coins do not land in it; `--grave-w` is the left bound of the floor.
-  let graveW = cssPx(root, '--grave-w', 0);
+  // The shift log strip on the left. He does not walk through it and
+  // coins do not land in it; `--log-w` is the left bound of the floor.
+  let logW = cssPx(root, '--log-w', 0);
   const coins: Coin[] = [];
   const fit = () => {
     W = root.clientWidth;
@@ -380,7 +460,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
     floorY = H - cssPx(root, '--floor', 24);
     jH = cssPx(root, '--janitor-h', 150);
     jW = jH * (USE_RIG ? 0.62 : FRAME_ASPECT);
-    graveW = cssPx(root, '--grave-w', 0);
+    logW = cssPx(root, '--log-w', 0);
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
@@ -394,7 +474,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
   fit();
 
   /* state ----------------------------------------------------------- */
-  let jx = graveW + (W - graveW) * (0.3 + Math.random() * 0.4);
+  let jx = logW + (W - logW) * (0.3 + Math.random() * 0.4);
   let dir: -1 | 1 = -1;
   let mode: Mode = 'walk';
   let sweepStart = -1e9;
@@ -440,7 +520,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
       }
       return;
     }
-    if (x < graveW) return; // the plot is not the floor
+    if (x < logW) return; // the clipboard is not the floor
     spawn(x, null, true);
     wake();
   };
@@ -478,7 +558,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
     const c: Coin = {
       el: d,
       tag,
-      x: Math.min(W - w, Math.max(graveW + w, x)),
+      x: Math.min(W - w, Math.max(logW + w, x)),
       y: fromTap ? -h : -h - Math.random() * 60,
       vx: (Math.random() - 0.5) * 30,
       vy: 0,
@@ -503,10 +583,10 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
     if (i >= 0) coins.splice(i, 1);
   }
 
-  /** A point on the sweepable floor, `u` in [0,1] from the graveyard's
+  /** A point on the sweepable floor, `u` in [0,1] from the shift log's
    *  edge to the right edge. */
   function floorX(u: number): number {
-    return graveW + (W - graveW) * u;
+    return logW + (W - logW) * u;
   }
 
   function dropSweep(e: SweepEvent) {
@@ -697,7 +777,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
         } else {
           moved = speed * 0.45 * dt;
           jx += dir * moved;
-          if (jx < graveW + jW * 0.6) dir = 1;
+          if (jx < logW + jW * 0.6) dir = 1;
           if (jx > W - jW * 0.6) dir = -1;
           if (now - lastUseful > IDLE_AFTER_S * 1000) {
             mode = 'idle';
@@ -818,11 +898,13 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
-/** Reduced motion: the same scene, frozen. He has already stopped. */
+/** Reduced motion: the same scene, frozen. He has already stopped. The
+ *  shift log still renders, its rows just appear instead of dropping. */
 function StaticScene() {
+  const total = useFeedTotal();
   const coins = useRef(
     Array.from({ length: 16 }, () => ({
-      x: 3 + Math.random() * 94,
+      u: 0.03 + Math.random() * 0.94,
       w: 14 + Math.round(Math.random() * 12),
       color: COLORS[Math.floor(Math.random() * COLORS.length)]!,
     })),
@@ -834,7 +916,8 @@ function StaticScene() {
           key={i}
           className="coin coin-still"
           style={{
-            left: `${c.x}%`,
+            // Same floor the engine uses: from the log's edge to the right.
+            left: `calc(var(--log-w) + (100% - var(--log-w)) * ${c.u.toFixed(3)})`,
             width: c.w,
             height: Math.max(5, Math.round(c.w * 0.42)),
             background: c.color,
@@ -847,6 +930,7 @@ function StaticScene() {
       >
         <img src={LEAN_FRAME} alt="" draggable={false} className="janitor-img block w-auto" />
       </div>
+      <ShiftLog total={total.total} complete={total.complete} reduced />
     </>
   );
 }
