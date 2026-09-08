@@ -42,7 +42,7 @@ Grab one Pons V1 and one Noxa so the multi-factory indexing gets exercised.
 **Buy this one.** Verified on chain 5 Sep 2026.
 
 ```
-BOW   0x9b1c8c5cbC20316fc311F00a6248B6bCF950ed8a   18 decimals
+BOW   0x9b1C8C5CBC20316Fc311F00a6248b6bCf950ed8a   18 decimals
 pool  0xae226E172AEe98d7812f7c68EEbD5305E2550d1C   fee tier 10000
 depth 3.828 WETH
 ```

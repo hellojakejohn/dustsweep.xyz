@@ -57,18 +57,27 @@ contract BuyDust is Script {
         require(block.chainid == 4663, "expected chain 4663 (real or forked)");
 
         // Real dead tokens, verified WETH-paired with funded pools.
-        address[5] memory tokens = [
+        address[6] memory tokens = [
             0x955b339944CbD4834156366D766C260C80956B44, // Noxa, 0.585 WETH pool
             0x5dDfeB98Cb3b19eefABde82608aE5574049E9C05, // Noxa, 0.169
             0x97133372cC4391A4F6889b4d52387649B76BC7EC, // Pons V1, 0.546
             0x6B2A210E2cd1Bb404C1E208D4f7e0a7d91F68A49, // Pons V1, 0.020
-            0x00e608488d2aA0FfeEa12FdEACF487af3141AA4D  // Noxa, 0.047, thinnest
+            0x00e608488d2aA0FfeEa12FdEACF487af3141AA4D, // Noxa, 0.047, thinnest
+            // BOW. Buying it works -- SwapRouter02 pulls it straight from
+            // you into the pool and never custodies it. Selling it through
+            // the Sweeper does NOT, because the Sweeper has to hold it
+            // mid-flight and the token reverts on any transfer whose
+            // recipient is not its own pool. `willmove.ts` catches that in
+            // preflight and files it under "no route out / will not move".
+            // It is in the fixture precisely so that pile is never empty.
+            0x9b1C8C5CBC20316Fc311F00a6248b6bCf950ed8a
         ];
 
         // Four normal buys, then one deliberately tiny one so the
         // "costs more than it is worth" pile has a real member.
-        uint256[5] memory spend = [
-            uint256(0.002 ether), 0.002 ether, 0.002 ether, 0.002 ether, 0.00002 ether
+        uint256[6] memory spend = [
+            uint256(0.002 ether), 0.002 ether, 0.002 ether, 0.002 ether, 0.00002 ether,
+            0.002 ether // BOW, into a 3.8 WETH pool, so this barely moves it
         ];
 
         uint256 total;

@@ -10,7 +10,7 @@ import { isRevert } from './errors';
 /**
  * The BOW problem: will this token even leave the wallet?
  *
- * BOW (0x9b1c8c5cbC20316fc311F00a6248B6bCF950ed8a) quotes perfectly well
+ * BOW (0x9b1C8C5CBC20316Fc311F00a6248b6bCf950ed8a) quotes perfectly well
  * and cannot be transferred to anything except its own Uniswap pool.
  * Verified 5 Sep 2026 by eth_call against mainnet with a balance state
  * override:
