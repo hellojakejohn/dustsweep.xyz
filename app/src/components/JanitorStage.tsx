@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePublicClient } from 'wagmi';
 import {
+  getGraveyard,
+  getGraveyardOlder,
   getLast,
   getTotal,
+  onGraveyard,
   onSweep,
   onTotal,
   startFeed,
+  type Headstone,
   type LastSweep,
   type SweepEvent,
 } from '../lib/feed';
@@ -69,7 +73,7 @@ const RIG_LINEUP = RIG_PARAM === 'lineup';
 
 /* ---------- tuning -------------------------------------------------- */
 
-const COLORS = ['#d8b377', '#e49054', '#c9bda8', '#8f9c80', '#5c7a72', '#b8834f'];
+export const COLORS = ['#d8b377', '#e49054', '#c9bda8', '#8f9c80', '#5c7a72', '#b8834f'];
 const MAX_COINS = 80;
 const WALK_PX_S = 58;
 const HURRY = 1.9;
@@ -92,6 +96,9 @@ const IDLE_LINES = [
 const BREAK_LINES = ['coffee.', '...', 'five minutes.', 'fine.'];
 
 /* ---------- component ----------------------------------------------- */
+// The counter used to be an odometer pinned top right. Since 8 Sep it is
+// the header of the graveyard strip on the LEFT (see Graveyard below),
+// and the engine keeps him and the coins out of that strip via --grave-w.
 
 export function JanitorStage() {
   const reduced = useReducedMotion();
@@ -141,12 +148,35 @@ function LiveScene() {
   return (
     <>
       <div ref={rootRef} className="absolute inset-0 touch-manipulation" />
-      <Counter total={total.total} complete={total.complete} last={last} />
+      <Graveyard total={total.total} complete={total.complete} last={last} />
     </>
   );
 }
 
-function Counter({
+/** How many stones stand in the plot at once. Older ones fade, then go;
+ *  the odometer still counts them. Fewer on a phone, where the strip is
+ *  two stones wide and the stage is 172px tall. */
+function graveVisible(): number {
+  return typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches ? 12 : 4;
+}
+
+/**
+ * The graveyard. A strip down the left edge of the stage: the odometer
+ * and its label up top, the plot of headstones standing on the floor
+ * below, one stone per token the Sweeper has actually sold, ticker read
+ * off the chain. Newest nearest the janitor, rows wrapping upward.
+ *
+ * Real data only. If the chain has two stones in it, there are two
+ * stones. Nothing is seeded, padded or drawn dim behind it. The ~63,000
+ * dead tokens on this chain are a real number and a real future feature
+ * (the offline TokenDeployed index), and until that index exists nothing
+ * that was not read off the chain goes on this screen.
+ *
+ * The odometer counts every `legsFilled` in every Swept log and can
+ * legitimately exceed the number of stones once the hydration cap
+ * bites; then the plot shows what it has and says `+N older`.
+ */
+function Graveyard({
   total,
   complete,
   last,
@@ -161,25 +191,71 @@ function Counter({
     const id = setInterval(() => tick((n) => n + 1), 30_000);
     return () => clearInterval(id);
   }, []);
+  const [stones, setStones] = useState<Headstone[]>(() => [...getGraveyard()]);
+  const [older, setOlder] = useState(getGraveyardOlder());
+  useEffect(
+    () =>
+      onGraveyard(() => {
+        setStones([...getGraveyard()]);
+        setOlder(getGraveyardOlder());
+      }),
+    [],
+  );
+  // Stones that were already standing when this render tree mounted do
+  // not rise again on a re-render; only ones that arrive later do.
+  const seen = useRef(new Set(stones.map((h) => h.txHash)));
+
   if (total === 0 && !complete) return null;
+
+  const visible = stones.slice(-graveVisible());
+  const hidden = stones.length - visible.length + older;
+
   return (
-    <div className="pointer-events-none absolute right-4 top-3 text-right sm:right-6 sm:top-4">
-      <p className="num text-[18px] font-semibold leading-none text-tan sm:text-[22px]">
-        <Odometer value={total} />
-      </p>
-      <p className="mt-1 text-[10.5px] leading-snug text-faint">
-        dead {total === 1 ? 'token' : 'tokens'} swept
-        {complete ? ' since launch' : ' lately'}
-        {total === 0 ? '. Yet.' : ''}
-      </p>
-      {last && (
-        <p className="num mt-1.5 text-[10px] leading-snug text-faint/80">
-          last: <span className="text-muted">{lastSymbols(last)}</span>
-          {' · '}
-          {formatEthTrim(last.userOutWei)} ETH
-          {' · '}
-          {ago(last.at)}
+    <div className="graveyard pointer-events-none absolute inset-y-0 left-0">
+      <div className="px-2 pt-3 sm:px-2.5 sm:pt-4">
+        <p className="num text-[18px] font-semibold leading-none text-tan sm:text-[22px]">
+          <Odometer value={total} />
         </p>
+        <p className="mt-1 text-[10.5px] leading-snug text-faint">
+          dead {total === 1 ? 'token' : 'tokens'} swept
+          {complete ? ' since launch' : ' lately'}
+          {total === 0 ? '. Yet.' : ''}
+        </p>
+        {/* Three short lines rather than one that wraps mid-number: the
+            strip is 120px wide and "0.00233 ETH · 12h ago" is not. */}
+        {last && (
+          <p className="num mt-1.5 text-[10px] leading-snug text-faint/80">
+            <span className="block">
+              last: <span className="text-muted">{lastSymbols(last)}</span>
+            </span>
+            <span className="block">{formatEthTrim(last.userOutWei)} ETH</span>
+            <span className="block">{ago(last.at)}</span>
+          </p>
+        )}
+      </div>
+
+      {/* Newest first in the DOM; row-reverse puts it on the right, next
+          to the janitor, and wrap-reverse stacks the older rows upward. */}
+      <div className="grave-plot">
+        {[...visible].reverse().map((h, i) => {
+          const fresh = !seen.current.has(h.txHash);
+          if (fresh) seen.current.add(h.txHash);
+          // Oldest of the visible fade out toward the cap.
+          const fade = Math.max(0.35, 1 - Math.max(0, i - 3) * 0.09);
+          return (
+            <span
+              key={`${h.txHash}-${h.token}`}
+              className={`stone${fresh ? ' stone-rise' : ''}`}
+              style={{ opacity: fade }}
+              title={h.symbol}
+            >
+              <span>{h.symbol}</span>
+            </span>
+          );
+        })}
+      </div>
+      {hidden > 0 && (
+        <p className="grave-older num text-[9px] leading-none text-faint/80">+{hidden} older</p>
       )}
     </div>
   );
@@ -292,6 +368,9 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
   let floorY = H - cssPx(root, '--floor', 24);
   let jH = cssPx(root, '--janitor-h', 150);
   let jW = jH * (USE_RIG ? 0.62 : FRAME_ASPECT); // footprint, for hit tests and reach
+  // The graveyard strip on the left. He does not walk through it and
+  // coins do not land in it; `--grave-w` is the left bound of the floor.
+  let graveW = cssPx(root, '--grave-w', 0);
   const coins: Coin[] = [];
   const fit = () => {
     W = root.clientWidth;
@@ -299,6 +378,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
     floorY = H - cssPx(root, '--floor', 24);
     jH = cssPx(root, '--janitor-h', 150);
     jW = jH * (USE_RIG ? 0.62 : FRAME_ASPECT);
+    graveW = cssPx(root, '--grave-w', 0);
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
@@ -312,7 +392,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
   fit();
 
   /* state ----------------------------------------------------------- */
-  let jx = W * (0.3 + Math.random() * 0.4);
+  let jx = graveW + (W - graveW) * (0.3 + Math.random() * 0.4);
   let dir: -1 | 1 = -1;
   let mode: Mode = 'walk';
   let sweepStart = -1e9;
@@ -332,7 +412,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
 
   // A dozen already on the floor. He was working before you got here.
   for (let i = 0; i < 12; i++) {
-    const c = spawn(Math.random() * W, null);
+    const c = spawn(floorX(Math.random()), null);
     c.y = floorY - c.h / 2;
     c.vy = 0;
     c.vx = 0;
@@ -358,6 +438,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
       }
       return;
     }
+    if (x < graveW) return; // the plot is not the floor
     spawn(x, null, true);
     wake();
   };
@@ -395,7 +476,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
     const c: Coin = {
       el: d,
       tag,
-      x: Math.min(W - w, Math.max(w, x)),
+      x: Math.min(W - w, Math.max(graveW + w, x)),
       y: fromTap ? -h : -h - Math.random() * 60,
       vx: (Math.random() - 0.5) * 30,
       vy: 0,
@@ -420,12 +501,18 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
     if (i >= 0) coins.splice(i, 1);
   }
 
+  /** A point on the sweepable floor, `u` in [0,1] from the graveyard's
+   *  edge to the right edge. */
+  function floorX(u: number): number {
+    return graveW + (W - graveW) * u;
+  }
+
   function dropSweep(e: SweepEvent) {
     const n = Math.max(e.legsFilled, e.symbols.length, 1);
     for (let i = 0; i < Math.min(n, 24); i++) {
       const label = e.symbols[i] ?? null;
       setTimeout(() => {
-        spawn(W * (0.08 + Math.random() * 0.84), label);
+        spawn(floorX(0.08 + Math.random() * 0.84), label);
         wake();
       }, i * 140);
     }
@@ -492,7 +579,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
 
     // Spawn trickle.
     if (now >= nextSpawn) {
-      spawn(W * (0.04 + Math.random() * 0.92), null);
+      spawn(floorX(0.04 + Math.random() * 0.92), null);
       nextSpawn = now + (busy ? 240 + Math.random() * 200 : 1100 + Math.random() * 1600);
     }
 
@@ -608,7 +695,7 @@ function createEngine(root: HTMLDivElement, isBusy: () => boolean) {
         } else {
           moved = speed * 0.45 * dt;
           jx += dir * moved;
-          if (jx < jW * 0.6) dir = 1;
+          if (jx < graveW + jW * 0.6) dir = 1;
           if (jx > W - jW * 0.6) dir = -1;
           if (now - lastUseful > IDLE_AFTER_S * 1000) {
             mode = 'idle';

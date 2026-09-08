@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { EXPLORER, SWEEP_TOKEN } from '../lib/addresses';
+import { SWEEP_TOKEN } from '../lib/addresses';
 
 /** `0x73F6…aed8`. Head is long enough to eyeball against a post on X,
  *  tail is what people actually check. Both halves matter -- an
@@ -40,7 +40,7 @@ async function copyText(text: string): Promise<boolean> {
 type State = 'idle' | 'copied' | 'failed';
 
 /**
- * The official contract address, on the page, in every state.
+ * The official contract address, in the header, in every state.
  *
  * This is an anti-impersonation element before it is a convenience.
  * ~63,000 dead tokens on this chain means a fake SWEEP costs somebody
@@ -49,10 +49,20 @@ type State = 'idle' | 'copied' | 'failed';
  * never behind a tooltip, never behind a details element, never hidden
  * at a breakpoint, and never rendered from anything but SWEEP_TOKEN.
  *
- * Deliberately NOT wired to the Robinhood mark in the header. That mark
+ * It moved from under the disclosure paragraph into the header on 8 Sep
+ * because the ~90px it cost there pushed the janitor below the fold on
+ * a phone. The caption that sat under it ("Anything else claiming to be
+ * SWEEP is not ours") now lives in the disclosure paragraph in App.tsx.
+ *
+ * Deliberately NOT wired to the Robinhood mark next to it. That mark
  * is a chain indicator and it is Robinhood's own asset; making it copy
  * our token's address implies an endorsement we do not have, and it is
  * hidden below sm anyway, which is where the traffic is.
+ *
+ * The failed state swaps the short form for the full address, wrapped,
+ * so it can be selected by hand. In a header that means the chip grows
+ * for 12s and the wordmark yields to it. That is the right trade: the
+ * address is the point of the element and the wordmark is not.
  */
 export function SweepCA() {
   const [state, setState] = useState<State>('idle');
@@ -71,47 +81,38 @@ export function SweepCA() {
     timer.current = setTimeout(() => setState('idle'), ok ? 1600 : 12000);
   };
 
+  const failed = state === 'failed';
+
   return (
-    <div className="mt-4 px-1">
+    <>
       <button
         type="button"
         onClick={() => void onCopy()}
         aria-label={`Copy the official SWEEP contract address, ${SWEEP_TOKEN}`}
         title={SWEEP_TOKEN}
-        className="group flex w-full items-center gap-2.5 rounded-xl border border-teal bg-raise px-3 py-2.5 text-left transition-colors hover:border-tan focus:outline-none focus-visible:ring-2 focus-visible:ring-orange"
+        className={`ca-chip group flex min-h-8 items-center gap-1.5 rounded-lg border bg-raise px-2 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-orange ${
+          failed ? 'min-w-0 flex-1 border-tan py-1' : 'shrink-0 border-teal hover:border-tan'
+        }`}
       >
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-cream">
+        <span className="ca-label text-[10px] font-semibold uppercase tracking-[0.08em] text-cream">
           Sweep
         </span>
         <span
-          className={`num min-w-0 flex-1 text-[12.5px] text-tan ${
-            state === 'failed' ? 'break-all' : 'truncate'
-          }`}
+          className={`ca-addr num text-[11.5px] leading-tight text-tan ${failed ? 'min-w-0 break-all' : 'whitespace-nowrap'}`}
         >
-          {state === 'failed' ? SWEEP_TOKEN : SHORT}
+          {failed ? SWEEP_TOKEN : SHORT}
         </span>
         <span
-          className={`shrink-0 text-[11px] font-semibold ${
-            state === 'copied' ? 'text-orange' : 'text-muted group-hover:text-cream'
+          className={`ca-glyph shrink-0 text-[10px] font-semibold leading-none ${
+            state === 'copied' ? 'is-copied text-orange' : 'text-muted group-hover:text-cream'
           }`}
+          aria-hidden="true"
         >
-          {state === 'copied' ? (
-            <span className="inline-flex items-center gap-1">
-              <CheckIcon />
-              Copied
-            </span>
-          ) : state === 'failed' ? (
-            'Select it'
-          ) : (
-            <span className="inline-flex items-center gap-1">
-              <CopyIcon />
-              Copy
-            </span>
-          )}
+          {state === 'copied' ? <CheckIcon /> : failed ? 'select' : <CopyIcon />}
         </span>
       </button>
 
-      {/* Screen readers get the result; sighted users get the label swap. */}
+      {/* Screen readers get the result; sighted users get the icon swap. */}
       <span aria-live="polite" className="sr-only">
         {state === 'copied'
           ? 'Contract address copied'
@@ -119,20 +120,7 @@ export function SweepCA() {
             ? 'Copy failed. The full address is shown for you to select.'
             : ''}
       </span>
-
-      <p className="mt-1.5 text-center text-[11px] leading-relaxed text-faint">
-        Official SWEEP contract on Robinhood Chain.{' '}
-        <a
-          href={`${EXPLORER}/token/${SWEEP_TOKEN}`}
-          target="_blank"
-          rel="noreferrer"
-          className="text-muted underline decoration-faint underline-offset-2 transition-colors hover:text-cream hover:decoration-cream"
-        >
-          View on Blockscout
-        </a>
-        . Anything else claiming to be SWEEP is not ours.
-      </p>
-    </div>
+    </>
   );
 }
 

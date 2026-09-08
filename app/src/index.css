@@ -51,6 +51,65 @@
 }
 
 /* ------------------------------------------------------------------
+ * Header. Three things share one row on a phone: the wordmark, the
+ * SWEEP CA chip and the connect button. The chip never gives anything
+ * up (it is the anti-impersonation control), so below 400px the
+ * wordmark is what yields: smaller mark, smaller type, no `.xyz`.
+ * ------------------------------------------------------------------ */
+@layer components {
+  .site-header {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .header-mark {
+    height: 44px;
+  }
+  .wordmark {
+    font-size: 19px;
+  }
+}
+
+/* Unlayered on purpose: these have to beat Tailwind's utility layer
+   (px-3 on the connect button, gap-* on the row). Cascade layers win
+   over specificity, so a rule inside @layer components never could. */
+@media (max-width: 399px) {
+  .site-header {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .header-mark {
+    height: 28px;
+  }
+  .wordmark {
+    font-size: 15px;
+  }
+  .header-connect button,
+  .header-connect a {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .wordmark-tld {
+    display: none;
+  }
+  /* The chip keeps its label and its address. The copy glyph is the
+     one decoration it can spare; the copied tick still shows. */
+  .ca-chip {
+    padding-left: 6px;
+    padding-right: 6px;
+    gap: 4px;
+  }
+  .ca-chip .ca-label {
+    font-size: 9.5px;
+  }
+  .ca-chip .ca-addr {
+    font-size: 11px;
+  }
+  .ca-chip .ca-glyph:not(.is-copied) {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------
  * The janitor stage. See components/JanitorStage.tsx.
  * Positions are written per frame as transforms by the engine; the CSS
  * here is shape, colour and the few one-shot animations (puff, tag,
@@ -84,6 +143,124 @@
   }
   .janitor-stage .floor {
     bottom: var(--floor);
+  }
+
+  /* The graveyard strip on the left. `--grave-w` is read by the engine
+     (cssPx) as the left bound of the janitor's walk and of where coins
+     can land. Everything else about the engine is unchanged. */
+  .janitor-stage {
+    --grave-w: 120px;
+    --stone-w: 54px;
+    --stone-h: 18px;
+    --stone-gap: 3px;
+  }
+  @media (min-width: 640px) {
+    .janitor-stage {
+      --grave-w: 132px;
+      --stone-w: 41px;
+      --stone-h: 26px;
+    }
+  }
+  .graveyard {
+    width: var(--grave-w);
+    z-index: 3;
+  }
+  .grave-plot {
+    position: absolute;
+    left: var(--stone-gap);
+    right: var(--stone-gap);
+    bottom: calc(var(--floor) - 1px);
+    display: flex;
+    flex-direction: row-reverse;
+    flex-wrap: wrap-reverse;
+    align-content: flex-start;
+    gap: var(--stone-gap);
+  }
+  .stone {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: var(--stone-w);
+    height: var(--stone-h);
+    padding-left: 5px;
+    padding-right: 3px;
+    overflow: hidden;
+    border-radius: 45% 45% 3px 3px / 55% 55% 3px 3px;
+    background: var(--color-teal);
+    box-shadow:
+      inset 0 1px 0 rgba(240, 228, 204, 0.12),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.35);
+    color: var(--color-cream);
+    font-family: var(--font-mono);
+    font-size: 8px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    white-space: nowrap;
+    transform-origin: 50% 100%;
+    /* Long tickers fade out at the right edge instead of cutting. */
+    mask-image: linear-gradient(90deg, #000 78%, transparent 97%);
+    -webkit-mask-image: linear-gradient(90deg, #000 78%, transparent 97%);
+  }
+  .stone > span {
+    padding-top: 3px;
+  }
+  .stone-rise {
+    animation: stone-rise 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes stone-rise {
+    from {
+      transform: translateY(100%) scaleY(0.6);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0) scaleY(1);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stone-rise {
+      animation: none;
+    }
+  }
+  .grave-older {
+    position: absolute;
+    left: 6px;
+    bottom: 6px;
+    white-space: nowrap;
+  }
+
+  /* The celebration overlay. See components/Celebration.tsx. */
+  .celebrate {
+    background: color-mix(in oklab, var(--color-page) 85%, transparent);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    animation: celebrate-in 180ms ease-out both;
+  }
+  .celebrate-card {
+    animation: celebrate-card-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes celebrate-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes celebrate-card-in {
+    from {
+      transform: translateY(12px) scale(0.98);
+      opacity: 0;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .celebrate,
+    .celebrate-card {
+      animation: none;
+    }
   }
 
   .janitor-walk {

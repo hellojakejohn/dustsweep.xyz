@@ -7,6 +7,7 @@ import { APPROVE_EXACT } from '../lib/permit2';
 import { DROP_REASON_COPY, legTotals, type SweepLeg } from '../lib/requote';
 import type { ScannedToken } from '../lib/scan';
 import type { useSweep } from '../hooks/useSweep';
+import { Celebration } from './Celebration';
 import { Receipt } from './Receipt';
 
 /**
@@ -64,15 +65,25 @@ export function SweepFlow({
 
   if (stage === 'done' && sweep.receipt) {
     return (
-      <Receipt
-        receipt={sweep.receipt}
-        feeBps={config?.feeBpsNative ?? feeBps ?? 0n}
-        tokens={allTokens}
-        onScanAgain={() => {
-          sweep.reset();
-          onScanAgain();
-        }}
-      />
+      <>
+        <Receipt
+          receipt={sweep.receipt}
+          feeBps={config?.feeBpsNative ?? feeBps ?? 0n}
+          tokens={allTokens}
+          onScanAgain={() => {
+            sweep.reset();
+            onScanAgain();
+          }}
+        />
+        {/* Keyed on the hash: once per sweep, never again on a re-render.
+            Renders nothing when legsFilled is 0; see Celebration.tsx. */}
+        <Celebration
+          key={sweep.receipt.hash}
+          receipt={sweep.receipt}
+          legs={sweep.legs}
+          tokens={allTokens}
+        />
+      </>
     );
   }
 
