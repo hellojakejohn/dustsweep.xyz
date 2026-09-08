@@ -38,3 +38,7 @@ claude/
 Claude outputs/
 claude-outputs/
 Claude Outputs/
+
+# Derived marketing assets (logo/banner exports for Dexscreener etc).
+# Generated from app/public/ sources, not sources themselves.
+dexscreener-assets/

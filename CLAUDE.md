@@ -625,26 +625,74 @@ Do not cut it.
    exists; once `BuybackBurner` is deployed and `setFeeSink` is called,
    the intent is 2.5% buy-and-burn SWEEP / 2.5% dev. Site copy in
    `claude/dustsweep-decisions.md`, 2026-09-05 (late).
-   **The Pons creator fee stream, corrected 7 Sep 2026.** An earlier
-   version of this line said "70% of Pons' 1% trade fee on SWEEP goes
-   100% to dev". That was wrong and it was wrong in a public file.
-   Read off the launch form and the factory at launch time:
-   `curveFeeBps` is 100, so the total trade fee is 1.00%, and
-   `maxCreatorTaxBps` is 1000, so a creator tax can be at most 10%.
-   Critically, creator tax is **additive, not carved out** of the 1%:
-   setting it to 10% recomputes the form to "Traders pay 11.00% in
-   total." SWEEP launched with creator tax at **0**, so traders pay the
-   standard 1% and nothing on top. Do not change it -- it is the
-   strongest honest-janitor line available and it is verifiable in the
-   launch calldata.
-   The creator's share of that 1% is claimed from `PonsV2FeeEscrow`
-   (`0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e`) via `claim()`. The
-   exact split of the 1% is NOT verified -- do not put a number on it
-   anywhere, on the site or off it. `/docs.html` says "Pons takes a fee
-   and pays part of it to whoever launched the token", which is what is
-   actually known. How this behaves after graduation is also unverified:
-   the UI has separate "Collect curve fees" and "Claim ETH" buttons, so
-   the mechanism differs and that path has never been read.
+   **The Pons creator fee stream. Corrected 7 Sep, RE-corrected 8 Sep
+   after reading the contracts. Read this whole block before editing
+   it, because the middle version was wrong too.**
+
+   There are TWO separate mechanisms and the 7 Sep correction conflated
+   them. Keeping both straight is the whole point of this note.
+
+   1. **Creator tax** -- `creatorTaxBps`, capped by `maxCreatorTaxBps`
+      at 1000 (10%). It is **additive, not carved out** of the base fee:
+      setting it to 10% recomputes the launch form to "Traders pay
+      11.00% in total." SWEEP launched with creator tax at **0**, so
+      traders pay the standard 1% and nothing on top. Do not change it.
+      It is the strongest honest-janitor line available and it is
+      verifiable in the launch calldata.
+
+   2. **The creator's share of the base 1% fee** -- a completely
+      different number. `curveFeeBps` is 100 (1.00% total), and the
+      split of that 1% is **70% creator / 30% protocol**. VERIFIED
+      on-chain 8 Sep two independent ways: `hook.launches(poolId)`
+      returns `protocolFeeShareBps = 3000`, and the graduation
+      transaction's `FeesSwept` split is exactly 0.70
+      (6544818134849467 / 9349740192642095). `hookFeeBps` is 100, so
+      the 1% continues post-graduation.
+
+   So the ORIGINAL line, "70% of Pons' 1% trade fee goes to dev", was
+   right about the split. The 7 Sep "correction" wrongly read
+   `maxCreatorTaxBps` (mechanism 1) as if it capped the fee share
+   (mechanism 2) and declared the 70% false. It was not false.
+
+   **This stays private regardless.** Standing rule 1 in
+   `claude/dustsweep-decisions.md` says no fee percentage goes on the
+   site beyond the one sentence already in the `$SWEEP` section.
+   Verified is not the same as published. `/docs.html` keeps "Pons takes
+   a fee and pays part of it to whoever launched the token".
+
+   **Post-graduation claiming, VERIFIED 8 Sep. The open question is
+   closed.** SWEEP graduated in tx
+   `0x89585c477bf4e0d6fdac5415c82b877ddfd17c726bc3e6af0963b5bf0d2d5b2d`
+   (block 57210943). There is ONE escrow for both streams:
+   `PonsV2FeeEscrow` `0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e`.
+   Its NatSpec: "Both the bonding curve and the post-graduation
+   PonsV2MemeHook credit the same way, so a recipient's balance is
+   denominated identically before and after graduation."
+
+   - **Claiming is still `claim()`**, selector `0x4e71d92d`, no args.
+     `claim()` covers BOTH the curve-phase fees and post-graduation
+     trading fees. SWEEP's quote asset is native ETH (`pairToken` is
+     `0x0`), so `claimToken` is not the one to use.
+   - Curve-phase fees were **auto-swept into the escrow at graduation**
+     -- `graduate()` calls `_sweepFees` before setting the flag.
+     Nothing is stranded.
+   - Caller must BE the recipient. The escrow debits `msg.sender` only,
+     so it has to be signed from `0x5dCD1D1DD0F797a24Cc509fDd0Df9e8747bBD01b`.
+   - A zero balance reverts `NoBalance()` rather than returning 0.
+   - The escrow has **no owner, no admin, no rescue function**. Balances
+     cannot be clawed back or expire.
+   - `curve.sweepFees()` now reverts `AlreadyGraduated()`, deliberately.
+   - **Do not try to self-sweep the hook.** `sweepPoolFees` nominally
+     allows the creator, but a non-operator hits
+     `InternalSwapRequiresOperator()` whenever memecoin-denominated fees
+     are pending, which they are. Pons runs a sweep bot
+     (`feeSweepOperator 0x49BbF2b70955Fb3a106e084D4BFDa92d334573d2`)
+     that sweeps continuously. Just call `claim()`.
+   - Read the claimable balance first, it is free and it is `view`:
+     `cast call 0xd3AFEB2a57f70eF218Aa82451c51B2fb0416Ac9e "balanceOf(address)(uint256)" 0x5dCD1D1DD0F797a24Cc509fDd0Df9e8747bBD01b --rpc-url rhc`
+
+   SWEEP's Uniswap v4 pool id, verified against `hook.launches`:
+   `0x331e9e498760711d3868f2bfb958c8dde3c655a4d2d06953d716eb0618f3cb9e`
 2. **These never get cut for schedule:** fork tests against real dead
    tokens, `slither .`, `aderyn .`, sweeping Jake's own wallet first, the
    receipt/share card, the unaudited disclosure.
