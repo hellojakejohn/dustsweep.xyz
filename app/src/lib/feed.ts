@@ -160,7 +160,10 @@ async function run(client: PublicClient) {
     // claude/dustsweep-decisions.md, 6 Sep: two overlapping getLogs
     // calls get one of them rejected).
     const tail = logs[logs.length - 1];
-    if (tail) {
+    // Same one-retry as the hydration walk: the public RPC 429s in
+    // bursts, and the "last:" line vanishing for a whole visit because of
+    // one bad second is a poor trade.
+    for (let attempt = 0; tail && attempt < 2; attempt++) {
       try {
         const block = await client.getBlock({ blockNumber: tail.blockNumber });
         const legs = await symbolsFor(client, tail.transactionHash);
@@ -175,8 +178,10 @@ async function run(client: PublicClient) {
         // The tail is already decoded; seed the plot with it rather than
         // reading the same tx twice.
         if (legs.length > 0) bury(legs, tail.transactionHash, last.at);
+        break;
       } catch {
-        // decoration; leave it blank
+        if (attempt === 0) await sleep(GRAVE_STEP_MS * 4);
+        // else decoration; leave it blank
       }
     }
   } catch {
