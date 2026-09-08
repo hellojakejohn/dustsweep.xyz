@@ -322,7 +322,7 @@ function InFlight({
     detail = `Covers all ${legCount} ${legCount === 1 ? 'token' : 'tokens'} at once. It is a signature, not a transaction, and it costs no gas.`;
   } else {
     headline = 'Sweeping';
-    detail = `Selling ${legCount} ${legCount === 1 ? 'token' : 'tokens'} in one transaction. Waiting for it to land.`;
+    detail = `Selling ${legCount} ${legCount === 1 ? 'token' : 'tokens'} in one sweep. Waiting for it to land.`;
   }
 
   return (
