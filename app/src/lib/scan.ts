@@ -291,18 +291,29 @@ export async function scanWallet(opts: {
   const gasCostPerLegWei = gasPriceWei * GAS_PER_LEG;
   onUpdate({ gasPriceWei, gasCostPerLegWei });
 
-  // Phase 1: authoritative balance and name. The indexer can be stale
-  // and we are about to put a price next to these, and to decide from
-  // the name whether the token is somebody's stock position.
+  // Phase 1: authoritative balance, name and symbol. The indexer can be
+  // stale and we are about to put a price next to these, and to decide
+  // from the name whether the token is somebody's stock position.
+  //
+  // SYMBOL IS READ ON CHAIN FOR THE SAME REASON NAME IS. Blockscout
+  // indexes a token's balance before it indexes its metadata, so a token
+  // minted minutes ago comes back with a real balance and an empty
+  // symbol, and the row renders as `???`. That is not a rare edge on a
+  // chain this young -- every fresh launch looks like that for a while,
+  // and `???` on a row you are being asked to destroy forever is the
+  // worst possible place to be vague about what something is.
   const balances = new Map<string, bigint>();
   const names = new Map<string, string>();
+  const symbols = new Map<string, string>();
 
   type MetaCall =
     | { token: HeldToken; kind: 'balance' }
-    | { token: HeldToken; kind: 'name' };
+    | { token: HeldToken; kind: 'name' }
+    | { token: HeldToken; kind: 'symbol' };
   const metaCalls: MetaCall[] = candidates.flatMap((token) => [
     { token, kind: 'balance' as const },
     { token, kind: 'name' as const },
+    { token, kind: 'symbol' as const },
   ]);
 
   await mapWithConcurrency(
@@ -313,20 +324,21 @@ export async function scanWallet(opts: {
       const results = await client.multicall({
         allowFailure: true,
         batchSize: 0,
-        contracts: group.map((c) =>
-          c.kind === 'balance'
-            ? {
-                address: c.token.address,
-                abi: erc20Abi,
-                functionName: 'balanceOf' as const,
-                args: [owner] as const,
-              }
-            : {
-                address: c.token.address,
-                abi: erc20Abi,
-                functionName: 'name' as const,
-              },
-        ),
+        contracts: group.map((c) => {
+          if (c.kind === 'balance') {
+            return {
+              address: c.token.address,
+              abi: erc20Abi,
+              functionName: 'balanceOf' as const,
+              args: [owner] as const,
+            };
+          }
+          return {
+            address: c.token.address,
+            abi: erc20Abi,
+            functionName: c.kind === 'name' ? ('name' as const) : ('symbol' as const),
+          };
+        }),
       });
 
       group.forEach((c, i) => {
@@ -339,7 +351,7 @@ export async function scanWallet(opts: {
             c.token.address,
             r?.status === 'success' ? (r.result as bigint) : c.token.indexedBalance,
           );
-        } else {
+        } else if (c.kind === 'name') {
           // Old bytes32-name tokens revert against the string ABI.
           // Fall back to the indexer's name so the guard still gets
           // something to match on.
@@ -347,6 +359,13 @@ export async function scanWallet(opts: {
             c.token.address,
             r?.status === 'success' ? (r.result as string) : c.token.name,
           );
+        } else {
+          // Same bytes32 caveat as name. An empty string counts as a
+          // failure here: some tokens answer `symbol()` with "" and the
+          // indexer's value, stale or not, beats nothing on a row whose
+          // button destroys the asset.
+          const onChain = r?.status === 'success' ? (r.result as string) : '';
+          symbols.set(c.token.address, onChain.trim() || c.token.symbol);
         }
       });
     },
@@ -357,6 +376,9 @@ export async function scanWallet(opts: {
       ...t,
       balance: balances.get(t.address) ?? t.indexedBalance,
       onChainName: names.get(t.address) ?? t.name,
+      // Overrides the indexer's symbol, same precedence as onChainName:
+      // the chain is the truth and the indexer is a cache of it.
+      symbol: symbols.get(t.address) || t.symbol,
     }))
     .filter((t) => t.balance > 0n);
 

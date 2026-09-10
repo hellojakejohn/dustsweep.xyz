@@ -230,6 +230,43 @@ export function requireV3Adapter(): `0x${string}` {
 }
 
 /**
+ * The BurnAdapter, for the two thirds of a typical wallet that has no
+ * buyer at any price. Written and tested since day 4 and deployed
+ * separately from the pair above, because the live Sweeper only needs a
+ * `setAdapter` call to accept it (script/DeployBurnAdapter.s.sol).
+ *
+ * Empty until that script has run. Empty is the right default: a burn
+ * routed at an adapter that is not whitelisted reverts the leg, and a
+ * burn routed at the WRONG address is unrecoverable by construction.
+ */
+// Deployed 10 Sep 2026 from the owner Ledger, tx
+// 0x9ae6c6b94f1ddbca6341643fcd7684b9c84bfcf80ec4078ed99523c472e86d52,
+// whitelisted on the live Sweeper in
+// 0x253e33bf857e943d9dd763e0206d4a1cd3f5ae8ee2b741cb5d4abf341e999e10.
+const BURN_ADAPTER_DEPLOYED: string = '0x0FC97f29718d91cEcd77439532BcDA5323634Ef4';
+
+const burnRaw = import.meta.env.VITE_BURN_ADAPTER?.trim() || BURN_ADAPTER_DEPLOYED;
+
+export const BURN_ADAPTER: `0x${string}` | null =
+  ADDR_RE.test(burnRaw) ? (burnRaw as `0x${string}`) : null;
+
+/** Burning is irreversible and the UI gates on this: no address, no burn
+ *  pile, no burn button, and the "no route out" tokens stay unsellable
+ *  rather than silently routing somewhere. */
+export const BURN_IS_LIVE = BURN_ADAPTER !== null;
+
+export function requireBurnAdapter(): `0x${string}` {
+  if (BURN_ADAPTER === null) {
+    throw new Error(
+      'No BurnAdapter address. Run script/DeployBurnAdapter.s.sol, then set ' +
+        'VITE_BURN_ADAPTER for a local fork or fill in BURN_ADAPTER_DEPLOYED ' +
+        'in app/src/lib/addresses.ts.',
+    );
+  }
+  return BURN_ADAPTER;
+}
+
+/**
  * The official SWEEP token, launched on Pons V2 on 7 Sep 2026 in tx
  * 0x4401128bc3f185af7f9af2d9a7c31d3ccb40c09c3db55048c8e738ee340ce145
  * (block 57,175,489). 1,000,000,000 supply, 18 decimals, fixed at launch.

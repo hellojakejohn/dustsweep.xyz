@@ -532,4 +532,1025 @@
       transform: translateY(-14px) scale(1.9);
     }
   }
+
+  /* ------------------------------------------------------------------
+   * The incinerator, top right. The clipboard hangs on the left wall of
+   * the stage and this hangs on the right wall of the room, up where the
+   * page has nothing in it. Same world, same rules: steel instead of the
+   * broom-handle brown, `tan` for the figure, `faint` for the label,
+   * `orange` reserved for the ember so the one warm thing on the page is
+   * the fire.
+   *
+   * It sits in the margin beside the 560px main column. At 1024px that
+   * margin is 232px and the whole element is 192px including its gutter,
+   * so this is the narrowest viewport it can appear on without crowding
+   * the card. Below that it is simply not rendered -- the janitor stage
+   * on a phone already has the clipboard eating the left of the floor
+   * and a second fixture would leave him nowhere to walk.
+   * ------------------------------------------------------------------ */
+  .furnace {
+    display: none;
+  }
+  @media (min-width: 1024px) {
+    .furnace {
+      --furnace-metal: #24282b;
+      --furnace-w: 160px;
+      position: fixed;
+      top: 96px;
+      right: 32px;
+      z-index: 2;
+      display: block;
+      width: var(--furnace-w);
+      text-align: center;
+      /* Decoration first, information second: it must never sit over the
+         connect button or the card at any width this renders at. */
+      pointer-events: none;
+    }
+  }
+  /* The flue, running up off the top of the screen. It is what makes the
+     box read as mounted to a wall rather than floating in the dark, and
+     it fades rather than ending, because a pipe with a visible stop looks
+     like a mistake. */
+  .furnace .flue {
+    position: absolute;
+    bottom: calc(100% - 2px);
+    left: 50%;
+    width: 20px;
+    height: 96px;
+    margin-left: -10px;
+    border-left: 1px solid rgba(240, 228, 204, 0.07);
+    border-right: 1px solid rgba(0, 0, 0, 0.5);
+    background: linear-gradient(to top, var(--furnace-metal), transparent);
+  }
+  .furnace-body {
+    position: relative;
+    height: 92px;
+    border-radius: 5px;
+    background:
+      linear-gradient(168deg, rgba(240, 228, 204, 0.055), transparent 42%),
+      var(--furnace-metal);
+    box-shadow:
+      inset 0 1px 0 rgba(240, 228, 204, 0.08),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+      0 2px 0 rgba(0, 0, 0, 0.4),
+      0 12px 22px rgba(0, 0, 0, 0.5);
+  }
+  /* Four rivets, as one background rather than four elements. */
+  .furnace-rivets {
+    position: absolute;
+    inset: 6px;
+    border-radius: 3px;
+    --rivet: radial-gradient(circle at center, rgba(240, 228, 204, 0.16) 0 1px, transparent 1.2px);
+    background-image: var(--rivet), var(--rivet), var(--rivet), var(--rivet);
+    background-repeat: no-repeat;
+    background-position: 0 0, 100% 0, 0 100%, 100% 100%;
+    background-size: 3px 3px;
+  }
+  /* The door: an inset panel with the glass in it. */
+  .furnace-door {
+    position: absolute;
+    inset: 14px 18px 14px 18px;
+    border-radius: 3px;
+    border: 1px solid rgba(0, 0, 0, 0.55);
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.4));
+    box-shadow: inset 0 1px 0 rgba(240, 228, 204, 0.05);
+  }
+  .furnace-window {
+    position: absolute;
+    inset: 9px;
+    border-radius: 2px;
+    border: 1px solid var(--color-teal);
+    overflow: hidden;
+    /* Cold, but not dead. See "Banked" below. */
+    background: #101113;
+    transition: background 600ms ease, box-shadow 600ms ease;
+  }
+  .furnace-latch {
+    position: absolute;
+    top: 50%;
+    right: 7px;
+    width: 7px;
+    height: 14px;
+    margin-top: -7px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #4a5157, #2c3236);
+    box-shadow: inset 0 1px 0 rgba(240, 228, 204, 0.14);
+  }
+
+  /* ------------------------------------------------------------------
+   * Lit. Nothing here is decorative-only: the fire only exists once
+   * balanceOf(0x…dEaD) is above zero, so the flames on the page and the
+   * burn on the chain are the same fact.
+   *
+   * The first pass was one radial gradient with a brightness pulse and
+   * it read as a backlit panel, which is exactly what it was. Fire is
+   * three things this now does and that did not: it is bottom-weighted
+   * (hot at the bed, dark at the top of the box), it moves in parts
+   * rather than as one object, and it is irregular. The four licks run
+   * on 1.9 / 2.3 / 2.7 / 3.3s -- deliberately non-harmonic, so they
+   * drift against each other for minutes instead of resyncing into a
+   * throb every few seconds. The flicker keyframes step at uneven
+   * percentages for the same reason.
+   *
+   * Transform and opacity only. The blur is static, so nothing here
+   * asks the compositor to re-rasterise per frame.
+   * ------------------------------------------------------------------ */
+  .furnace.is-lit .furnace-window {
+    overflow: hidden;
+    border-color: #6b3a1e;
+    /* The firebox itself: near-black at the top, heat pooling low. */
+    background:
+      radial-gradient(ellipse 70% 52% at 50% 104%, #b0501d 0%, #5e2410 42%, transparent 72%),
+      linear-gradient(180deg, #120c0c 0%, #1b0f0b 58%, #2a1109 100%);
+    animation: firebox-flicker 4.7s linear infinite;
+  }
+
+  /* The bed. Widest and hottest thing in the box, and it barely moves --
+     it is coals, not flame. */
+  .furnace .fire-bed {
+    position: absolute;
+    left: -6%;
+    right: -6%;
+    bottom: -34%;
+    height: 74%;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at 50% 50%, #ffd9a0 0%, #ffb35c 18%, #e8862f 34%, #8c3410 62%, transparent 78%);
+    filter: blur(4px);
+    animation: bed-breathe 5.3s ease-in-out infinite;
+  }
+
+  /* The licks. Same shape, four different clocks and offsets. */
+  .furnace .flame {
+    position: absolute;
+    bottom: -12%;
+    width: 34%;
+    height: 96%;
+    border-radius: 50% 50% 42% 42%;
+    background: radial-gradient(
+      ellipse at 50% 72%,
+      #fff0c4 0%,
+      #ffc061 22%,
+      var(--color-orange) 46%,
+      #a8410f 68%,
+      transparent 84%
+    );
+    filter: blur(3px);
+    mix-blend-mode: screen;
+    transform-origin: 50% 100%;
+  }
+  .furnace .f1 {
+    left: 10%;
+    animation: lick-a 1.9s ease-in-out infinite;
+  }
+  .furnace .f2 {
+    left: 32%;
+    width: 40%;
+    height: 112%;
+    animation: lick-b 2.7s ease-in-out infinite;
+  }
+  .furnace .f3 {
+    left: 56%;
+    animation: lick-a 2.3s ease-in-out infinite -0.7s;
+  }
+  .furnace .f4 {
+    left: 22%;
+    width: 52%;
+    height: 78%;
+    opacity: 0.7;
+    animation: lick-b 3.3s ease-in-out infinite -1.4s;
+  }
+
+  /* Sparks. Three is enough to sell it; more looks like a screensaver. */
+  .furnace .spark {
+    position: absolute;
+    bottom: 14%;
+    width: 2px;
+    height: 2px;
+    border-radius: 50%;
+    background: #ffd9a0;
+    box-shadow: 0 0 4px 1px rgba(255, 190, 110, 0.75);
+    opacity: 0;
+  }
+  .furnace .s1 {
+    left: 28%;
+    animation: spark-up 2.6s linear infinite;
+  }
+  .furnace .s2 {
+    left: 52%;
+    animation: spark-up 3.4s linear infinite -1.1s;
+  }
+  .furnace .s3 {
+    left: 71%;
+    animation: spark-up 2.9s linear infinite -2.2s;
+  }
+
+  /* Light thrown out of the door onto the metal, on its own clock. */
+  .furnace .fire-spill {
+    position: absolute;
+    inset: -14px;
+    border-radius: 12px;
+    pointer-events: none;
+    background: radial-gradient(ellipse 52% 46% at 50% 52%, rgba(228, 144, 84, 0.34), transparent 68%);
+    animation: spill-flicker 3.1s linear infinite;
+  }
+
+  /* ------------------------------------------------------------------
+   * Banked. The cold state was flat black glass, which reads as an
+   * appliance switched off rather than one waiting for a job. This is
+   * the state in between: coals burnt down to almost nothing at the
+   * bottom of the box. Dull red, no flame, no sparks.
+   *
+   * It asserts nothing about the chain. The numbers are still zero and
+   * still say so, and "Not in service yet." is still the note under
+   * them. This is the difference between an empty furnace and a broken
+   * one, which is a fact about the appliance, not about the burn.
+   *
+   * Everything here sits deliberately under the lit state: half the
+   * height, a third of the brightness, and much slower clocks
+   * (6.7 / 9.1 / 11.3s) so it breathes instead of flickering. If it
+   * ever competes with the lit state for attention, dim it further.
+   * ------------------------------------------------------------------ */
+  .furnace:not(.is-lit) .furnace-window {
+    background:
+      radial-gradient(ellipse 62% 30% at 50% 112%, #3d1608 0%, #24100a 46%, transparent 74%),
+      #101113;
+  }
+
+  /* The coal bed. Low, wide, and it never quite goes out. */
+  .furnace .ember-bed {
+    position: absolute;
+    left: 4%;
+    right: 4%;
+    bottom: -22%;
+    height: 46%;
+    border-radius: 50%;
+    background: radial-gradient(
+      ellipse at 50% 50%,
+      #c4491a 0%,
+      #8c3410 26%,
+      #4a1c0a 52%,
+      transparent 74%
+    );
+    filter: blur(5px);
+    opacity: 0.55;
+    animation: coals-breathe 9.1s ease-in-out infinite;
+  }
+
+  /* Two coals catching and fading on their own clocks. Two, not four:
+     this is the residue of a fire, not a fire. */
+  .furnace .ember {
+    position: absolute;
+    bottom: 12%;
+    width: 3px;
+    height: 2px;
+    border-radius: 50%;
+    background: #e8862f;
+    filter: blur(1px);
+    opacity: 0;
+  }
+  .furnace .e1 {
+    left: 36%;
+    animation: coal-glow 6.7s ease-in-out infinite;
+  }
+  .furnace .e2 {
+    left: 61%;
+    animation: coal-glow 11.3s ease-in-out infinite -4.2s;
+  }
+
+  /* Barely any light on the metal: enough that the box is not evenly
+     dark, not enough to read as lit from across the page. */
+  .furnace .ember-spill {
+    position: absolute;
+    inset: -10px;
+    border-radius: 12px;
+    pointer-events: none;
+    background: radial-gradient(ellipse 46% 40% at 50% 60%, rgba(196, 73, 26, 0.13), transparent 70%);
+    animation: coals-breathe 9.1s ease-in-out infinite;
+  }
+
+  @keyframes lick-a {
+    0% {
+      transform: translateY(6%) scale(0.86, 0.8) skewX(2deg);
+      opacity: 0.5;
+    }
+    26% {
+      transform: translateY(-5%) scale(0.96, 1.16) skewX(-4deg);
+      opacity: 0.95;
+    }
+    52% {
+      transform: translateY(1%) scale(1.06, 0.94) skewX(3deg);
+      opacity: 0.66;
+    }
+    74% {
+      transform: translateY(-8%) scale(0.9, 1.24) skewX(-2deg);
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(6%) scale(0.86, 0.8) skewX(2deg);
+      opacity: 0.5;
+    }
+  }
+  @keyframes lick-b {
+    0% {
+      transform: translateY(4%) scale(1.04, 0.88) skewX(-3deg);
+      opacity: 0.62;
+    }
+    31% {
+      transform: translateY(-9%) scale(0.88, 1.22) skewX(4deg);
+      opacity: 1;
+    }
+    58% {
+      transform: translateY(2%) scale(1, 0.92) skewX(-1deg);
+      opacity: 0.58;
+    }
+    81% {
+      transform: translateY(-4%) scale(0.94, 1.1) skewX(5deg);
+      opacity: 0.88;
+    }
+    100% {
+      transform: translateY(4%) scale(1.04, 0.88) skewX(-3deg);
+      opacity: 0.62;
+    }
+  }
+  @keyframes bed-breathe {
+    0%,
+    100% {
+      opacity: 0.82;
+      transform: scaleX(1);
+    }
+    43% {
+      opacity: 1;
+      transform: scaleX(1.05);
+    }
+  }
+  @keyframes spark-up {
+    0% {
+      transform: translate(0, 0) scale(1);
+      opacity: 0;
+    }
+    9% {
+      opacity: 1;
+    }
+    70% {
+      opacity: 0.7;
+    }
+    100% {
+      transform: translate(5px, -40px) scale(0.3);
+      opacity: 0;
+    }
+  }
+  /* Uneven steps on purpose. An evenly eased flicker is a heartbeat. */
+  @keyframes firebox-flicker {
+    0% { filter: brightness(1); }
+    6% { filter: brightness(1.12); }
+    11% { filter: brightness(0.93); }
+    17% { filter: brightness(1.05); }
+    23% { filter: brightness(0.88); }
+    29% { filter: brightness(1.14); }
+    38% { filter: brightness(0.97); }
+    44% { filter: brightness(1.08); }
+    53% { filter: brightness(0.9); }
+    61% { filter: brightness(1.11); }
+    69% { filter: brightness(0.95); }
+    76% { filter: brightness(1.06); }
+    84% { filter: brightness(0.91); }
+    92% { filter: brightness(1.09); }
+    100% { filter: brightness(1); }
+  }
+  @keyframes spill-flicker {
+    0% { opacity: 0.8; }
+    9% { opacity: 1; }
+    16% { opacity: 0.66; }
+    27% { opacity: 0.92; }
+    39% { opacity: 0.72; }
+    48% { opacity: 1; }
+    58% { opacity: 0.7; }
+    71% { opacity: 0.95; }
+    83% { opacity: 0.64; }
+    94% { opacity: 0.88; }
+    100% { opacity: 0.8; }
+  }
+
+  @keyframes coals-breathe {
+    0% { opacity: 0.42; }
+    38% { opacity: 0.66; }
+    61% { opacity: 0.5; }
+    100% { opacity: 0.42; }
+  }
+
+  @keyframes coal-glow {
+    0% { opacity: 0; }
+    12% { opacity: 0.75; }
+    24% { opacity: 0.3; }
+    38% { opacity: 0.62; }
+    70% { opacity: 0.08; }
+    100% { opacity: 0; }
+  }
+
+  /* Reduced motion: the fire stays, it just stops moving. A still fire
+     is legible; no fire at all would misreport the chain. */
+  @media (prefers-reduced-motion: reduce) {
+    .furnace.is-lit .furnace-window,
+    .furnace .fire-bed,
+    .furnace .flame,
+    .furnace .fire-spill {
+      animation: none;
+    }
+    .furnace .spark {
+      display: none;
+    }
+    .furnace .ember-bed,
+    .furnace .ember-spill {
+      animation: none;
+    }
+    .furnace .ember {
+      animation: none;
+      opacity: 0.5;
+    }
+  }
+
+  .furnace-readout {
+    margin-top: 9px;
+  }
+  .furnace-num {
+    font-size: 19px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--color-tan);
+  }
+  /* The one interactive thing up here. Everything else is scenery, so
+     the element is pointer-events:none and this switches it back on. */
+  .furnace-label {
+    display: inline-block;
+    margin-top: 3px;
+    font-size: 10.5px;
+    color: var(--color-faint);
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 2px;
+    pointer-events: auto;
+    transition: color 150ms ease, text-decoration-color 150ms ease;
+  }
+  .furnace-label:hover {
+    color: var(--color-muted);
+    text-decoration-color: var(--color-faint);
+  }
+  .furnace-label-static {
+    margin-top: 3px;
+    font-size: 10.5px;
+    line-height: 1.35;
+    color: var(--color-faint);
+  }
+  .furnace-note {
+    margin-top: 5px;
+    font-size: 10px;
+    line-height: 1.45;
+    color: var(--color-faint);
+  }
+
+  /* ------------------------------------------------------------------
+   * IGNITION. One shot, ~2.6s, fired by components/Furnace.tsx when a
+   * burn belonging to THIS user lands (lib/burn.ts `onIgnite`).
+   *
+   * It is a surge that decays back into the steady fire, not a state:
+   * no `forwards`, nothing latched, so the furnace after the flare is
+   * pixel-identical to the furnace before it. That matters because the
+   * steady state is the honest one and the flare is the reward for
+   * having just paid for it.
+   *
+   * Everything here is transform, opacity and filter on elements that
+   * are already composited for the idle fire, so the surge costs no new
+   * layers. Skipped entirely under reduced motion (Furnace.tsx never
+   * sets the class) and again in the media query at the end of the file,
+   * belt and braces.
+   * ------------------------------------------------------------------ */
+  .furnace.is-igniting .furnace-window {
+    animation: firebox-flicker 4.7s linear infinite, ignite-box 4200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .furnace.is-igniting .fire-bed {
+    animation: bed-breathe 5.3s ease-in-out infinite, ignite-bed 4200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .furnace.is-igniting .flame {
+    animation-duration: 900ms;
+  }
+  .furnace.is-igniting .fire-spill {
+    animation: spill-flicker 3.1s linear infinite, ignite-spill 4200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  /* The counter is the number that just changed, so it gets the one
+     non-fire cue: a short lift to tan-hot and back. */
+  .furnace.is-igniting .furnace-num {
+    animation: ignite-num 4200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .furnace.is-igniting .furnace-body {
+    animation: ignite-shudder 620ms ease-out;
+  }
+
+  @keyframes ignite-box {
+    0% { filter: brightness(1); }
+    5% { filter: brightness(2.5) saturate(1.25); }
+    16% { filter: brightness(1.85) saturate(1.15); }
+    /* Holds hot through the middle, so the fire is still going while the
+       receipt is being read, then cools over the back half rather than
+       cutting out. The first version was 2.6s of surge and then a step. */
+    45% { filter: brightness(1.5) saturate(1.08); }
+    72% { filter: brightness(1.2); }
+    100% { filter: brightness(1); }
+  }
+  @keyframes ignite-bed {
+    0% { transform: scaleY(1); filter: blur(4px) brightness(1); }
+    7% { transform: scaleY(1.5); filter: blur(3px) brightness(2); }
+    26% { transform: scaleY(1.24); filter: blur(3.4px) brightness(1.5); }
+    58% { transform: scaleY(1.12); filter: blur(3.7px) brightness(1.26); }
+    100% { transform: scaleY(1); filter: blur(4px) brightness(1); }
+  }
+  @keyframes ignite-spill {
+    0% { transform: scale(1); }
+    7% { transform: scale(1.55); }
+    40% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+  }
+  @keyframes ignite-num {
+    0% {
+      transform: scale(1);
+      color: var(--color-tan);
+    }
+    12% {
+      transform: scale(1.22);
+      color: #ffd9a0;
+    }
+    100% {
+      transform: scale(1);
+      color: var(--color-tan);
+    }
+  }
+  /* A cast-iron box does not bounce. Two small knocks and done. */
+  @keyframes ignite-shudder {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    12% {
+      transform: translate(-1px, 1px);
+    }
+    30% {
+      transform: translate(1px, -1px);
+    }
+    52% {
+      transform: translate(-1px, 0);
+    }
+  }
+
+  /* ------------------------------------------------------------------
+   * The furnace below 1024px.
+   *
+   * It used to be display:none here, on the grounds that there is no
+   * margin to hang it in. True, and it meant SWEEP had no presence at
+   * all on the width most arrivals actually use. So it lies down: still
+   * in the flow between the disclosure and the janitor's floor, still
+   * the same markup and the same fire, just a wall panel instead of a
+   * hanging one. The flue goes -- a pipe that runs off the side of a
+   * horizontal box reads as a mistake, and there is nothing above it to
+   * run into.
+   * ------------------------------------------------------------------ */
+  @media (max-width: 1023px) {
+    .furnace {
+      --furnace-metal: #24282b;
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      max-width: 560px;
+      margin: 20px auto 0;
+      padding: 0 16px;
+      pointer-events: none;
+    }
+    .furnace .flue {
+      display: none;
+    }
+    button.furnace-body {
+      flex: none;
+      width: 88px;
+      height: 58px;
+    }
+    .furnace-door {
+      inset: 9px 11px;
+    }
+    .furnace-window {
+      inset: 6px;
+    }
+    .furnace-latch {
+      right: 4px;
+      width: 5px;
+      height: 10px;
+      margin-top: -5px;
+    }
+    .furnace-rivets {
+      inset: 4px;
+    }
+    .furnace-readout {
+      margin-top: 0;
+      min-width: 0;
+      text-align: left;
+    }
+    .furnace-num {
+      font-size: 17px;
+    }
+  }
+
+  /* The flare is motion for its own sake, which is exactly what this
+     query is for. Furnace.tsx already declines to set the class, so this
+     only catches a preference that changes mid-animation. */
+  @media (prefers-reduced-motion: reduce) {
+    .furnace.is-igniting .furnace-window,
+    .furnace.is-igniting .fire-bed,
+    .furnace.is-igniting .fire-spill,
+    .furnace.is-igniting .furnace-num,
+    .furnace.is-igniting .furnace-body {
+      animation: none;
+    }
+  }
+
+  /* ------------------------------------------------------------------
+   * The furnace body is a button now (Furnace.tsx). Everything visual
+   * about it is unchanged; this only strips the UA button styling and
+   * turns pointer events back on, since the aside itself is
+   * pointer-events:none so it can never eat a click meant for the card.
+   * ------------------------------------------------------------------ */
+  button.furnace-body {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    font: inherit;
+    color: inherit;
+    text-align: inherit;
+    appearance: none;
+    cursor: pointer;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button.furnace-body:focus-visible {
+    outline: 2px solid var(--color-orange);
+    outline-offset: 3px;
+  }
+
+  /* ------------------------------------------------------------------
+   * STOKING. Tap = a short surge. Four taps inside the window = a roar,
+   * longer and wider. Neither changes a number; both are the same class
+   * of thing as tapping the floor for a coin.
+   *
+   * `is-stoked` and `is-roaring` are mutually exclusive (Furnace.tsx
+   * emits one or the other), and both decay to the resting state with no
+   * `forwards`, exactly like `is-igniting`.
+   * ------------------------------------------------------------------ */
+  .furnace.is-lit.is-stoked .furnace-window {
+    animation: firebox-flicker 4.7s linear infinite, stoke-box 1300ms ease-out;
+  }
+  .furnace.is-lit.is-stoked .fire-bed {
+    animation: bed-breathe 5.3s ease-in-out infinite, stoke-bed 1300ms ease-out;
+  }
+  .furnace.is-lit.is-stoked .flame {
+    animation-duration: 1100ms;
+  }
+  .furnace.is-lit.is-stoked .spark {
+    animation-duration: 1200ms;
+  }
+
+  .furnace.is-lit.is-roaring .furnace-window {
+    animation: firebox-flicker 4.7s linear infinite, roar-box 2400ms ease-out;
+  }
+  .furnace.is-lit.is-roaring .fire-bed {
+    animation: bed-breathe 5.3s ease-in-out infinite, roar-bed 2400ms ease-out;
+  }
+  .furnace.is-lit.is-roaring .flame {
+    animation-duration: 620ms;
+  }
+  .furnace.is-lit.is-roaring .spark {
+    animation-duration: 780ms;
+  }
+  .furnace.is-lit.is-roaring .fire-spill {
+    animation: spill-flicker 3.1s linear infinite, ignite-spill 2400ms ease-out;
+  }
+
+  /* A cold furnace stokes too: there is no flame, so what answers is the
+     banked coal bed. For a visitor holding no dead tokens this is the
+     only feedback this element will ever give them, so it has to do
+     something. */
+  .furnace:not(.is-lit).is-stoked .ember-bed,
+  .furnace:not(.is-lit).is-roaring .ember-bed {
+    animation: coals-breathe 4.2s ease-in-out infinite, stoke-coals 1300ms ease-out;
+  }
+  .furnace:not(.is-lit).is-stoked .ember,
+  .furnace:not(.is-lit).is-roaring .ember {
+    animation: coal-glow 3.4s ease-in-out infinite, stoke-coals 1300ms ease-out;
+  }
+  .furnace:not(.is-lit).is-stoked .ember-spill,
+  .furnace:not(.is-lit).is-roaring .ember-spill {
+    animation: stoke-coals 1300ms ease-out;
+  }
+
+  .furnace.is-stoked .furnace-body {
+    animation: stoke-knock 300ms ease-out;
+  }
+  .furnace.is-roaring .furnace-body {
+    animation: ignite-shudder 620ms ease-out;
+  }
+
+  @keyframes stoke-box {
+    0% { filter: brightness(1); }
+    10% { filter: brightness(1.75) saturate(1.15); }
+    100% { filter: brightness(1); }
+  }
+  @keyframes stoke-bed {
+    0% { transform: scaleY(1); filter: blur(4px) brightness(1); }
+    14% { transform: scaleY(1.3); filter: blur(3.4px) brightness(1.55); }
+    100% { transform: scaleY(1); filter: blur(4px) brightness(1); }
+  }
+  @keyframes roar-box {
+    0% { filter: brightness(1); }
+    6% { filter: brightness(2.7) saturate(1.3); }
+    30% { filter: brightness(1.8) saturate(1.15); }
+    100% { filter: brightness(1); }
+  }
+  @keyframes roar-bed {
+    0% { transform: scaleY(1); filter: blur(4px) brightness(1); }
+    8% { transform: scaleY(1.6); filter: blur(2.8px) brightness(2.1); }
+    40% { transform: scaleY(1.2); filter: blur(3.6px) brightness(1.4); }
+    100% { transform: scaleY(1); filter: blur(4px) brightness(1); }
+  }
+  @keyframes stoke-coals {
+    0% { filter: brightness(1); }
+    12% { filter: brightness(2.3) saturate(1.2); }
+    100% { filter: brightness(1); }
+  }
+  @keyframes stoke-knock {
+    0%, 100% { transform: translate(0, 0); }
+    35% { transform: translate(0, 1px); }
+  }
+
+  /* ------------------------------------------------------------------
+   * The furnace button. Stands where `Sweep N tokens` stands, and must
+   * NOT look like it: selling pays you, burning costs you and returns
+   * nothing. Filled-orange is the pay-you button, so this is the furnace
+   * door instead -- cold steel with heat coming up from the bottom edge.
+   * The difference should be legible before the label is read.
+   * ------------------------------------------------------------------ */
+  .btn-furnace {
+    position: relative;
+    display: flex;
+    height: 52px;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 1px solid #6b3a1e;
+    border-radius: 8px;
+    background:
+      radial-gradient(ellipse 80% 130% at 50% 145%, rgba(232, 134, 47, 0.42) 0%, rgba(140, 52, 16, 0.22) 46%, transparent 74%),
+      linear-gradient(180deg, #2b3033, #1d2123);
+    box-shadow:
+      inset 0 1px 0 rgba(240, 228, 204, 0.07),
+      inset 0 -16px 24px -16px rgba(255, 150, 60, 0.6),
+      0 2px 0 rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+    transition: border-color 180ms ease, filter 180ms ease;
+  }
+  .btn-furnace:hover {
+    border-color: var(--color-orange);
+    filter: brightness(1.16);
+  }
+  .btn-furnace:focus-visible {
+    outline: 2px solid var(--color-orange);
+    outline-offset: 2px;
+  }
+  .btn-furnace-glow {
+    position: absolute;
+    inset: auto 0 -70% 0;
+    height: 130%;
+    pointer-events: none;
+    background: radial-gradient(ellipse 58% 100% at 50% 100%, rgba(255, 150, 60, 0.4), transparent 72%);
+    animation: furnace-btn-breathe 3.7s ease-in-out infinite;
+  }
+  .btn-furnace-label {
+    position: relative;
+    z-index: 2;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffd9a0;
+  }
+  @keyframes furnace-btn-breathe {
+    0%, 100% { opacity: 0.72; transform: scaleY(1); }
+    50% { opacity: 1; transform: scaleY(1.12); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .furnace.is-stoked .furnace-window,
+    .furnace.is-stoked .fire-bed,
+    .furnace.is-stoked .furnace-body,
+    .furnace.is-roaring .furnace-window,
+    .furnace.is-roaring .fire-bed,
+    .furnace.is-roaring .fire-spill,
+    .furnace.is-roaring .furnace-body,
+    .btn-furnace-glow {
+      animation: none;
+    }
+  }
+
+  /* ------------------------------------------------------------------
+   * THE FURNACE LIFTS ABOVE THE OVERLAY WHILE IT IGNITES.
+   *
+   * The flare was invisible, and this is the bug worth naming: the burn
+   * overlay is a fixed scrim at z-40, the furnace lives at z-2 in the
+   * page, so the one second the furnace is actually roaring was the one
+   * second it sat behind a dark sheet. The whole point of the moment was
+   * hidden by the thing announcing the moment.
+   *
+   * 46 puts it above the scrim (40) and the embers canvas (45) and below
+   * the card (50), so the fire reads through the darkened page while the
+   * receipt still sits on top of everything. It drops back to 2 the
+   * instant the flare ends, so nothing about resting z-order changes.
+   * ------------------------------------------------------------------ */
+  .furnace.is-igniting,
+  .furnace.is-lifted {
+    z-index: 46;
+  }
+  /* Heat thrown onto the darkened page around it. Only while igniting --
+     at rest the furnace does not light the room. */
+  .furnace.is-igniting::before {
+    content: '';
+    position: absolute;
+    inset: -120% -90%;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(ellipse 50% 42% at 50% 42%, rgba(232, 134, 47, 0.3), transparent 68%);
+    animation: ignite-bloom 4200ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes ignite-bloom {
+    0% { opacity: 0; transform: scale(0.6); }
+    7% { opacity: 1; transform: scale(1.18); }
+    50% { opacity: 0.62; transform: scale(1.06); }
+    100% { opacity: 0; transform: scale(1); }
+  }
+
+  /* ------------------------------------------------------------------
+   * The furnace panels. Every step of the burn flow used to drop back to
+   * a plain bordered box with 11px text links the moment you pressed the
+   * big button, so the flow looked like it belonged to two different
+   * products. These are the same machine as `.btn-furnace`: steel, a hot
+   * edge along the top, and the action as a real button rather than a
+   * link that happens to be orange.
+   * ------------------------------------------------------------------ */
+  .panel-furnace {
+    position: relative;
+    overflow: hidden;
+    border-radius: 10px;
+    border: 1px solid var(--color-teal);
+    background:
+      radial-gradient(ellipse 90% 60% at 50% -10%, rgba(232, 134, 47, 0.09), transparent 70%),
+      linear-gradient(180deg, #22262a, #1b1e21);
+    padding: 14px;
+    box-shadow:
+      inset 0 1px 0 rgba(240, 228, 204, 0.05),
+      0 6px 18px rgba(0, 0, 0, 0.35);
+  }
+  /* Armed: the panels after which something is irreversible. Warmer
+     border, and the hot edge above breathes instead of sitting still. */
+  .panel-furnace.is-armed {
+    border-color: #6b3a1e;
+  }
+  .panel-furnace-heat {
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 179, 92, 0.85), transparent);
+  }
+  .panel-furnace.is-armed .panel-furnace-heat {
+    animation: panel-heat 2.9s ease-in-out infinite;
+  }
+  @keyframes panel-heat {
+    0%, 100% { opacity: 0.45; }
+    50% { opacity: 1; }
+  }
+  .panel-furnace-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-cream);
+  }
+  .panel-furnace-body {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--color-muted);
+  }
+  .panel-furnace-foot {
+    margin-top: 7px;
+    font-size: 10.5px;
+    color: var(--color-faint);
+  }
+
+  /* The approval queue, as a row of bars. One per token, so the length
+     of the queue is a thing you see rather than a number you read. */
+  .approve-track {
+    margin-top: 10px;
+    display: flex;
+    gap: 4px;
+  }
+  .approve-pip {
+    height: 4px;
+    flex: 1;
+    border-radius: 2px;
+    background: rgba(240, 228, 204, 0.12);
+    transition: background 240ms ease;
+  }
+  .approve-pip.is-done {
+    background: linear-gradient(90deg, #c05a1c, #ffb35c);
+  }
+  .approve-pip.is-active {
+    background: rgba(255, 179, 92, 0.45);
+    animation: pip-wait 1.15s ease-in-out infinite;
+  }
+  @keyframes pip-wait {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  /* The manifest. Hot metal, not form controls. */
+  .burn-manifest {
+    margin-top: 10px;
+    display: flex;
+    max-height: 112px;
+    flex-wrap: wrap;
+    gap: 5px;
+    overflow-y: auto;
+  }
+  .burn-chip {
+    border-radius: 4px;
+    border: 1px solid rgba(216, 179, 119, 0.45);
+    background: rgba(232, 134, 47, 0.08);
+    padding: 3px 7px;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 10.5px;
+    color: var(--color-cream);
+  }
+  .burn-chip:disabled {
+    cursor: default;
+  }
+  .burn-chip.is-out {
+    border-color: var(--color-teal);
+    background: transparent;
+    color: var(--color-faint);
+    text-decoration: line-through;
+  }
+
+  /* The small furnace button, for inside a panel. */
+  .btn-furnace-sm {
+    height: 44px;
+  }
+  .btn-furnace-sm .btn-furnace-label {
+    font-size: 13px;
+  }
+  /* Armed: hotter bottom edge and a faster breath, so the final button
+     is visibly not the same temperature as the one that opened the flow. */
+  .btn-furnace.is-armed {
+    border-color: #a8410f;
+    box-shadow:
+      inset 0 1px 0 rgba(240, 228, 204, 0.08),
+      inset 0 -18px 26px -14px rgba(255, 150, 60, 0.85),
+      0 2px 0 rgba(0, 0, 0, 0.4);
+  }
+  .btn-furnace.is-armed .btn-furnace-glow {
+    animation-duration: 2.1s;
+  }
+  .btn-furnace:disabled {
+    cursor: not-allowed;
+    filter: grayscale(0.6) brightness(0.7);
+  }
+
+  /* The way out. Quiet, centred, never competing with the hot button --
+     but always present, because every one of these panels must be
+     leavable right up until the signature. */
+  .link-quiet {
+    display: block;
+    width: 100%;
+    margin-top: 9px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--color-faint);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: color 150ms ease;
+  }
+  .link-quiet:hover {
+    color: var(--color-muted);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .furnace.is-igniting::before,
+    .panel-furnace.is-armed .panel-furnace-heat,
+    .approve-pip.is-active {
+      animation: none;
+    }
+  }
 }

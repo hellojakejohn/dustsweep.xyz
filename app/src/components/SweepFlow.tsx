@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { SWEEPER_IS_OVERRIDDEN } from '../lib/addresses';
+import { BURN_IS_LIVE, SWEEPER_IS_OVERRIDDEN } from '../lib/addresses';
 import { explorerTx } from '../lib/chain';
 import { DELEGATED_NOTICE } from '../lib/delegation';
 import { formatEth, formatEthTrim, shortAddress } from '../lib/format';
@@ -8,6 +8,7 @@ import { DROP_REASON_COPY, legTotals, type SweepLeg } from '../lib/requote';
 import type { ScannedToken } from '../lib/scan';
 import type { useSweep } from '../hooks/useSweep';
 import { Celebration } from './Celebration';
+import { Incinerate } from './Incinerate';
 import { Receipt } from './Receipt';
 
 /**
@@ -123,6 +124,26 @@ export function SweepFlow({
     stage === 'signing' ||
     stage === 'sweeping';
 
+  /**
+   * WHAT THE BIG BUTTON DOES WHEN NOTHING CAN BE SOLD.
+   *
+   * `noQuote` tokens are tickable (only `willNotMove` is locked out), so a
+   * user can select nothing but dead tokens and press Sweep. Every leg
+   * then fails, `filled == 0`, and `Sweeper.sol:145` reverts
+   * `NothingFilled()` -- a transaction that was guaranteed from the start
+   * to do nothing, charged at full gas. The Totals line above says
+   * `You receive` in the negative and the button stays lit anyway.
+   *
+   * So when the selection is ENTIRELY dead, the primary action becomes
+   * the furnace instead. Burning is the only thing that can be done with
+   * those tokens, and it is now the control that looks like the main one.
+   * A mixed selection keeps Sweep, because the sellable legs are real and
+   * the dead ones fail individually and come home.
+   */
+  const deadSelected = selected.filter((t) => t.noRouteReason === 'noQuote');
+  const burnOnly = selected.length > 0 && deadSelected.length === selected.length;
+  const showBurnPrimary = burnOnly && BURN_IS_LIVE;
+
   return (
     <div className="mt-4">
       {stage === 'paused' && (
@@ -145,6 +166,29 @@ export function SweepFlow({
       ) : (
         <>
           {sweep.delegated && <Delegated />}
+          {showBurnPrimary ? (
+            <>
+              <p className="mt-3 px-1 text-[11.5px] leading-relaxed text-muted">
+                Nothing you have selected can be sold. Nobody is buying them at any
+                price, so the only thing left is to destroy them.
+              </p>
+              <Incinerate
+                variant="primary"
+                tokens={selected}
+                gasCostPerLegWei={gasCostPerLegWei}
+              />
+            </>
+          ) : (
+            <>
+          {deadSelected.length > 0 && (
+            <p className="mt-3 px-1 text-[11.5px] leading-relaxed text-tan">
+              {deadSelected.length} of these {deadSelected.length === 1 ? 'has' : 'have'} no
+              buyer and will not sell. {deadSelected.length === 1 ? 'It' : 'They'} will fail
+              {deadSelected.length === 1 ? 'its' : 'their'} own leg and come back to your
+              wallet. Untick the rest to burn {deadSelected.length === 1 ? 'it' : 'them'}
+              {' '}instead.
+            </p>
+          )}
           <CostLine
             stage={stage}
             approvals={steps.length - stepsDone}
@@ -170,6 +214,8 @@ export function SweepFlow({
                   ? `Carry on, ${steps.length - stepsDone} to go`
                   : `Sweep ${selected.length} ${selected.length === 1 ? 'token' : 'tokens'}`}
           </button>
+            </>
+          )}
         </>
       )}
 

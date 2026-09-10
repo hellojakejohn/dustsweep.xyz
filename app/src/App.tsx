@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CapabilityProbe } from './components/CapabilityProbe';
 import { ConnectButton } from './components/Connect';
+import { Furnace } from './components/Furnace';
 import { JanitorStage } from './components/JanitorStage';
 import { SweepCA } from './components/SweepCA';
 import { SweepCard } from './components/SweepCard';
@@ -123,6 +124,12 @@ export function App() {
         {SHOW_CAPS && <CapabilityProbe />}
       </main>
 
+      {/* The room's two fixtures. The stage is the floor and the left
+          wall (the janitor's clipboard); the furnace is the right wall,
+          up in the margin beside the column where the page has nothing
+          in it. The furnace renders itself away below 1024px and until
+          balanceOf(0x…dEaD) has actually been read once. */}
+      <Furnace />
       {/* Sits at the bottom of the viewport when the page is short and
           below the copy when it is long. Never over the disclosure text. */}
       <JanitorStage />

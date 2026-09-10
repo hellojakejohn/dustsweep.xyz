@@ -3,3 +3,8 @@
 # Local RPC override for anvil-fork testing. Never committed.
 .env.local
 .env*.local
+# ...INCLUDING the parked copies. `.env*.local` only matches names ENDING
+# in .local, so `.env.local.fork` and `.env.local.off` were sailing past
+# it and `git add -A` would have put them in a public repo. Renaming a
+# secret to get it out of the way must not be what publishes it.
+.env.local.*

@@ -1,5 +1,5 @@
 import { decodeFunctionData, erc20Abi, parseEventLogs, type PublicClient } from 'viem';
-import { SWEEPER } from './addresses';
+import { BURN_ADAPTER, SWEEPER } from './addresses';
 import { sweeperAbi } from './sweeper';
 
 /**
@@ -56,6 +56,10 @@ export type Headstone = {
   token: `0x${string}`;
   txHash: `0x${string}`;
   at: number; // unix ms, block timestamp
+  /** True when this leg was routed at the BurnAdapter rather than sold.
+   *  Read off the leg's own `adapter` field in the sweep calldata, which
+   *  `symbolsFor` already decodes, so this costs no extra RPC call. */
+  burned: boolean;
 };
 
 type Listener = (e: SweepEvent) => void;
@@ -111,6 +115,16 @@ export function getGraveyard(): Headstone[] {
  *  until the backfill has finished. */
 export function getGraveyardOlder(): number {
   return graveyardOlderLegs;
+}
+
+/** Tokens destroyed through the BurnAdapter rather than sold.
+ *
+ *  Counted from the headstones, so it covers the hydrated window only --
+ *  the same GRAVE_MAX cap the plot lives under, and the same honest
+ *  "+N older" caveat applies. It is NOT a second chain read: the leg's
+ *  adapter comes out of calldata `symbolsFor` already decodes. */
+export function getIncinerated(): number {
+  return graveyard.reduce((n, h) => n + (h.burned ? 1 : 0), 0);
 }
 
 export function startFeed(client: PublicClient) {
@@ -280,9 +294,20 @@ async function hydrateGraveyard(client: PublicClient, logs: SweptLog[]) {
 }
 
 /** Insert stones for one sweep, keeping the plot oldest-first. */
-function bury(legs: { token: `0x${string}`; symbol: string }[], txHash: `0x${string}`, at: number) {
+function bury(
+  legs: { token: `0x${string}`; symbol: string; adapter: `0x${string}` }[],
+  txHash: `0x${string}`,
+  at: number,
+) {
   if (graveyard.some((h) => h.txHash === txHash)) return;
-  const stones: Headstone[] = legs.map((l) => ({ symbol: l.symbol, token: l.token, txHash, at }));
+  const burnAdapter = BURN_ADAPTER?.toLowerCase();
+  const stones: Headstone[] = legs.map((l) => ({
+    symbol: l.symbol,
+    token: l.token,
+    txHash,
+    at,
+    burned: burnAdapter !== undefined && l.adapter.toLowerCase() === burnAdapter,
+  }));
   // Hydration arrives newest-first, live arrives newest-last; find the
   // slot by timestamp so both end up in one oldest-first array.
   let i = graveyard.length;
@@ -308,7 +333,7 @@ const sweptEvent = sweeperAbi.find((x) => x.type === 'event' && x.name === 'Swep
 async function symbolsFor(
   client: PublicClient,
   hash: `0x${string}`,
-): Promise<{ token: `0x${string}`; symbol: string }[]> {
+): Promise<{ token: `0x${string}`; symbol: string; adapter: `0x${string}` }[]> {
   // Throws on an RPC failure so the hydration walk can retry; returns []
   // for a tx that is not a sweep or whose every leg failed.
   const [tx, receipt] = await Promise.all([
@@ -322,7 +347,7 @@ async function symbolsFor(
       l.args.token.toLowerCase(),
     ),
   );
-  const legs = (args[2] as readonly { token: `0x${string}` }[]).filter(
+  const legs = (args[2] as readonly { token: `0x${string}`; adapter: `0x${string}` }[]).filter(
     (l) => !failed.has(l.token.toLowerCase()),
   );
   if (legs.length === 0) return [];
@@ -332,10 +357,44 @@ async function symbolsFor(
   });
   return legs.map((l, i) => {
     const r = res[i];
-    return { token: l.token, symbol: r && r.status === 'success' ? String(r.result).slice(0, 12) : '?' };
+    return {
+      token: l.token,
+      adapter: l.adapter,
+      symbol: r && r.status === 'success' ? String(r.result).slice(0, 12) : '?',
+    };
   });
 }
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Hydrate ONE sweep immediately, out of band with the 15s poll.
+ *
+ * Called by the burn flow the moment its receipt lands. Without it the
+ * furnace counter waits up to POLL_MS for the poll to notice a sweep the
+ * user is sitting there watching, which on the one screen whose entire
+ * job is "the fire lights when the chain says so" reads as broken.
+ *
+ * This is NOT an optimistic update and it invents nothing: it runs the
+ * same `symbolsFor` + `bury` the poll runs, against the real calldata of
+ * a mined transaction. `bury` is idempotent on txHash, so the poll
+ * arriving at the same sweep a few seconds later is a no-op rather than
+ * a double count.
+ */
+export async function recordLocalSweep(
+  client: PublicClient,
+  hash: `0x${string}`,
+): Promise<void> {
+  if (graveyard.some((h) => h.txHash === hash)) return;
+  try {
+    const legs = await symbolsFor(client, hash);
+    if (legs.length === 0) return;
+    const tx = await client.getTransactionReceipt({ hash });
+    const block = await client.getBlock({ blockNumber: tx.blockNumber });
+    bury(legs, hash, Number(block.timestamp) * 1000);
+  } catch {
+    // The poll is still coming. A failed fast path costs nothing.
+  }
 }

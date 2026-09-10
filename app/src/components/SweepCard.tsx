@@ -131,6 +131,13 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
     () => scan.tokens.filter((t) => selected.has(t.address)),
     [scan.tokens, selected],
   );
+
+  /** The BOW class: real pool, real price, refuses every transfer that is
+   *  not to its own pool. Unsellable AND unburnable, by anyone. */
+  const stuckCount = useMemo(
+    () => scan.tokens.filter((t) => t.noRouteReason === 'willNotMove').length,
+    [scan.tokens],
+  );
   // Live `feeBpsNative`, not a constant. Null until the read lands.
   const feeBps = useSweeperFee();
   const totals = totalsFor(selectedTokens, scan.gasCostPerLegWei, feeBps);
@@ -240,6 +247,22 @@ export function SweepCard({ onStatus }: { onStatus: (line: string) => void }) {
                       ) : null
                     }
                   >
+                    {/* Burning USED TO be triggered from here, by an 11px
+                        link above the rows. It moved to the card footer as
+                        the primary 52px button (see SweepFlow), because on
+                        this pile burning is the only available action and
+                        the prominent control was the wrong one. What stays
+                        here is the part that is information rather than an
+                        action: which of these cannot be moved by anybody,
+                        including their holder, and so cannot be burned
+                        either. */}
+                    {s.pile === 'noRoute' && stuckCount > 0 && (
+                      <p className="mb-1.5 px-2 text-[10px] text-faint">
+                        {stuckCount} of these {stuckCount === 1 ? 'cannot' : 'cannot'} move at
+                        all, so {stuckCount === 1 ? 'it cannot' : 'they cannot'} be sold or
+                        burned by anyone.
+                      </p>
+                    )}
                     {piles[s.pile].map((t) => (
                       <TokenRow
                         key={t.address}
